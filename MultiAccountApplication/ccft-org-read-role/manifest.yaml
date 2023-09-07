@@ -1,0 +1,27 @@
+---
+#Default region for deploying Custom Control Tower: Code Pipeline, Step functions, Lambda, SSM parameters, and StackSets
+region: us-east-1
+version: 2021-03-15
+
+resources:
+  # -----------------------------------------------------------------------------
+  # Role for reading CCFT data in spoke accounts
+  # -----------------------------------------------------------------------------
+  - name: CCFTSpokeAccountsReadDataRole
+    resource_file: ccft-role/ccft-read-role.yaml
+    parameters:
+      - parameter_key: "CCFTReadDataRole"
+        parameter_value: "ccft-read-role"
+      - parameter_key: "ManagementAccount"
+        parameter_value: "$[alfred_ssm_/org/account-id/management]"  # or AccountID
+    deploy_method: stack_set
+    deployment_targets:
+      accounts:
+        - Management-Account-Name  # Mgmt has to be targeted individually
+      organizational_units: # List here all the OUs you wish to deploy to. Samples below.
+        - Security
+        - Infrastructure
+        - NonProduction
+        - Production
+    regions: 
+      - us-east-1

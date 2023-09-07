@@ -1,0 +1,36 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Creates a stack containing an IAM Role for reading CCFT data
+Parameters:
+  CCFTReadDataRole:
+    Type: String
+    Default: ccft-read-role
+    Description: Role for reading CCFT data
+  ManagementAccount:
+    Description: Management Account ID number
+    Type: String
+Resources:
+  CCFTReadAccountDataRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName:
+        !Ref CCFTReadDataRole
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Sub 'arn:aws:iam::${ManagementAccount}:root'
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: CCFT-Read-Data-Policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CCFTReadData
+                Effect: Allow
+                Resource: "*"
+                Action:
+                  - 'sustainability:GetCarbonFootprintSummary'

@@ -120,7 +120,7 @@ def extract_emissions_data(startDate, endDate, credentials):
 
     except Exception as e:
             if str(e) == "404 Client Error: Not Found for url: https://us-east-1.console.aws.amazon.com/billing/rest/api-proxy/carbonfootprint":
-                raise Exception("No carbon footprint report is available for this account at this time. If no report is available, your account might be too new to show data. There is a delay of three months between the end of a month and when emissions data is available.")
+                raise Exception("No carbon footprint report is available for this account at this time:", accountID, "If no report is available, your account might be too new to show data. There is a delay of three months between the end of a month and when emissions data is available.")
             else:
                 raise Exception("An error occured: " + str(e))
 

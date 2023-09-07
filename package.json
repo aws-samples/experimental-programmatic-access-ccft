@@ -1,0 +1,18 @@
+{
+    "name": "experimental-programmatic-access-ccft",
+    "version": "1.0.0",
+    "description": "This is a serverless application that automates the monthly extraction of new CCFT data within a multi account structure.",
+    "author": {
+      "name": "experimental-programmatic-access-ccft-team"
+    },
+    "contributors": [
+        {
+            "name" : "Steffen Grunwald"
+        },
+        {
+            "name" : "Katja Philipp"
+        }
+    ],
+    "license": "MIT-0",
+    "homepage": "https://github.com/aws-samples/experimental-programmatic-access-ccft/MultiAccountApplication"
+  }
