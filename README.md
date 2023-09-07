@@ -378,12 +378,12 @@ If you want to visualize the data, you can do so by using Amazon QuickSight. Che
 - If the emissions of an account for a specific month are `0`, `paceproductcode` and `regioncode` will be empty in the Athena view.
 
 ###  What are costs for running this application?
-The cost for running this application depends on the number of accounts that are part of your organization. You can use this [AWS Pricing Calculator example](https://calculator.aws/#/estimate?id=1963803b68ed07e959eb8cbd2b7b3a7059bbfbfb) and adapt it to your requirements. There are no upfront cost to running this application; you pay for the resources that are created as part of the application. Major services used are the following:
+The cost for running this application depends on the number of accounts that are part of your organization. You can use this [AWS Pricing Calculator example](https://calculator.aws/#/estimate?id=1963803b68ed07e959eb8cbd2b7b3a7059bbfbfb) and adapt it to your requirements. There are no upfront cost to running this application; you pay for the resources that are created and used as part of the application. Major services used are the following:
 
 - [AWS Lambda](https://docs.aws.amazon.com/whitepapers/latest/how-aws-pricing-works/lambda.htmlaw): 
   - Example: If you have 100 accounts as part of your AWS organization, the first invocation (with backfill) will result in 205 Lambda function invocations, after the backfill 104 Lambda invocations per month (given that new AWS CCFT data is available on the 15th of the month). The `extract-carbon-emissions-data.py` and `backfill-data.py` Lambda functions run approximately 6-10 seconds per account ID.
 - [AWS Step Functions](https://aws.amazon.com/step-functions/pricing/)
-  - Example: The state machine will run once monthly, in the case of the backfill with 207 state transitions per month, or 106 state transitions after the backfill (given that new AWS CCFT data is available on the 15th of the month).
+  - Example: The state machine will run once monthly, in the case of the backfill with 213 state transitions per month, or 110 state transitions after the backfill (given that new AWS CCFT data is available on the 15th of the month and the state machine run is successful).
 - [Amazon S3](https://aws.amazon.com/s3/pricing/)
   - Example: The size of the backfill .json file is ~10KB, and the size of a .json file for one month's data ~1KB (note that this depends on the specific data you get back). Running the application for 100 AWS accounts, this would result in a total storage capacity for the first month of 1.1MB, with an additional 0.1MB per month.
 - [Amazon Athena](https://aws.amazon.com/athena/pricing/)
