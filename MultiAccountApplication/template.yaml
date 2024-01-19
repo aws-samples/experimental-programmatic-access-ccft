@@ -3,7 +3,7 @@ Transform: AWS::Serverless-2016-10-31
 Metadata:
   AWS::ServerlessRepo::Application:
     Name: experimental-programmatic-access-ccft
-    Description: SAM Template for ccft-sam-script
+    Description: This application automates the monthly extraction of new AWS Customer Carbon Footprint Tool data within a multi account structure
     Author: experimental-programmatic-access-ccft-team
     LicenseUrl: ../LICENSE
     ReadmeUrl: ../README.md
