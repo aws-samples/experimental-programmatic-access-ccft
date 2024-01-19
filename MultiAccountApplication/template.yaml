@@ -23,11 +23,11 @@ Globals:
 
 Parameters:
   CarbonEmissionsDataBucketName:
-    Description: "Name suffix (w/o prefixes for acct ID, region) for carbon emissions data bucket"
+    Description: "Name suffix (w/o prefixes for acct ID, region) for carbon emissions data bucket (will be created by this stack)"
     Type: "String"
     Default: "ccft-data"
   CarbonEmissionsDataFileName:
-    Description: "Name prefix for the .json file"
+    Description: "Name prefix for the .json file as output of the script"
     Type: "String"
     Default: "ccft-access.json"
   CCFTRoleName:
@@ -35,7 +35,7 @@ Parameters:
     Type: "String"
     Default: "ccft-read-role"
   GlueDatabaseName:
-    Description: "Name of the Glue database used for Athena"
+    Description: "Name of the Glue database used for Athena (will be created by this stack)"
     Type: "String"
     Default: "carbon_emissions"
 
