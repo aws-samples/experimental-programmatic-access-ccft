@@ -1,5 +1,15 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: experimental-programmatic-access-ccft
+    Description: SAM Template for ccft-sam-script
+    Author: experimental-programmatic-access-ccft-team
+    LicenseUrl: LICENSE
+    ReadmeUrl: README.md
+    SemanticVersion: 1.0.0
+    HomePageUrl: https://github.com/aws-samples/experimental-programmatic-access-ccft
+    SourceCodeUrl: https://github.com/aws-samples/experimental-programmatic-access-ccft
 Description: >
   ccft-sam-script
 
