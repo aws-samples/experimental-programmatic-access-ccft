@@ -9,7 +9,7 @@ The script can be used for programmatic access to the same AWS Customer Carbon F
 This repository gives you supporting source code for two use cases:
 1. If you are looking for a way to extract CCFT data for a small number of accounts on an ad-hoc basis, or want to include the script within your application, you can find the [`ccft_access.py`](./MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/ccft_access.py) script itself in the [`MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/`](./MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/) folder. To get started, check out the [General FAQs](#general-faq) and the [single-account specific FAQs](#single-account-script-faq) below.
 
-2. If you are looking for a way to automate the monthly extraction of new CCFT data within a multi account structure, this repository contains source code and supporting files for a serverless application that you can deploy with the SAM CLI. With it, you can deploy an application to extract new AWS Customer Carbon Footprint Tool data every month for all accounts of your AWS organization with the experimental script. You can find the supporting source code within the folder [`MultiAccountApplication`](./MultiAccountApplication). To get started, check out the [General FAQs](#general-faq) and the [multi-account specific FAQs](#multi-account-extraction-faq) below.
+2. If you are looking for a way to automate the monthly extraction of new CCFT data within a multi account structure, this repository contains source code and supporting files for a serverless application that you can deploy with the SAM CLI or via the Serverless Application Repository. With it, you can deploy an application to extract new AWS Customer Carbon Footprint Tool data every month for all accounts of your AWS organization with the experimental script. You can find the supporting source code within the folder [`MultiAccountApplication`](./MultiAccountApplication). To get started, check out the [General FAQs](#general-faq) and the [multi-account specific FAQs](#multi-account-extraction-faq) below.
 
 Read the AWS Customer Carbon Footprint Tool documentation for more details to [understand your carbon emission estimations](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/ccft-estimation.html). 
 
@@ -262,6 +262,22 @@ You can find details on the resources that are created within the [`template.yam
 (7) In the first invocation, an Athena database and table are created that point to the ccft-data bucket (in the case that this didn't happen yet in the backfill step). For every invocation, a view gets updated with the new data.
 
 ### Q: How can I deploy the application?
+
+You can deploy the application via the Serverless Application Repository **or** with the SAM CLI.
+
+#### Option 1: Deployment via the AWS Serverless Application Repository
+
+The [AWS Serverless Application Repository](https://aws.amazon.com/serverless/serverlessrepo/) is a managed repository for serverless applications. Using the Serverless Application Repository (SAR), you don't need to clone, build, package, or publish source code to AWS before deploying it. To deploy the application, go to the [Experimental Programmatic Access application](https://serverlessrepo.aws.amazon.com/applications/eu-central-1/406252154896/experimental-programmatic-access-ccft). 
+
+[![cloudformation-launch-button](https://s3.amazonaws.com/cloudformation-examples/cloudformation-launch-stack.png)](https://serverlessrepo.aws.amazon.com/applications/eu-central-1/406252154896/experimental-programmatic-access-ccft)
+
+
+In the AWS Management console, you can view the application's permissions and resources, and configure the application in the `Application settings` section.
+* Select `Deploy` to deploy the application.
+* Navigate to the CloudFormation dashboard by selecting `Deployments` and `CloudFormation stack`. Here, you can see the stack that was just deployed. You can navigate to the `Resources` tab to see all resources that were created as part of this stack.
+* The state machine will automatically be triggered on the next 15th. If you want to run the application already now, you can also navigate to your `ExtractCarbonEmissionsStateMachine` Step Functions State Machine. Select **Start execution**. You can leave everything as is, and select **Start execution**. 
+
+#### Option 2: Deployment with the SAM CLI
 
 The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. 
 
