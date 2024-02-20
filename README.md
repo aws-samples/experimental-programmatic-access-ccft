@@ -389,7 +389,7 @@ SELECT * FROM carbon_emissions_view WHERE startdate = '2022-01-01';
 If you want to visualize the data, you can do so by using Amazon QuickSight. Check out the following documentation entry to understand [how you can create a QuickSight dataset using Amazon Athena data](https://docs.aws.amazon.com/quicksight/latest/user/create-a-data-set-athena.html).
 
 ### Other things to consider
-- If you're logged in as a management account of AWS Organizations, the customer carbon footprint tool reports an aggregate of the member account data for the duration that those accounts were a part of your management account. If you're a member account, the customer carbon footprint tool reports emission data for all the periods for this account. This is regardless of any changes that might have occurred to your account's associated membership in one of the AWS Organizations. 
+- If you're logged in to a management account of AWS Organizations, the customer carbon footprint tool reports an aggregate of the member account data for the duration that those accounts were a part of your management account. If you're logged in to a member account, the customer carbon footprint tool reports emission data for all the periods for this account. This is regardless of any changes that might have occurred to your account's associated membership in one of the AWS Organizations. 
 - If data isn't available for your account, your account might be too new to show data. After each month, you might have a delay of up to three months for AWS to show your carbon emission estimates.
 - If the emissions of an account for a specific month are `0`, `paceproductcode` and `regioncode` will be empty in the Athena view.
 
