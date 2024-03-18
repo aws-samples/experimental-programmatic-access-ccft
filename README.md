@@ -236,7 +236,7 @@ This SAM template deploys the following resources:
   - `check-first-invocation.py` : checks if a backfill of data is needed in case of first invocation
   - `backfill-data.py`: invokes the ccft_access.py script for a specific account for the past 40-4months and stores the data as one .json file in the `ccft-data` bucket (example: `2020-03-01to2023-03-01carbon_emissions.json`)
   - `extract-carbon-emissions-data.py` : executes the experimental programmatic access script for a given account ID and stores it in the `ccft-data` bucket as a .json file (example: `2023-04-01carbon_emissions.json`)
-  - `create-alter-athena-view.py` : creates an Athena database (if not exists) and an Athena table (if not exists), as well as creates or updates an Athena view which points to the `ccft-data` bucket
+  - `create-alter-athena-view.py` : creates an Athena database (if not exists) and an Athena table (if not exists), as well as creates or updates two Athena views which point to the `ccft-data` bucket
 - An AWS Step Function State Machine `ExtractCarbonEmissionsStateMachine`. You can find the definition in statemachine/extract_carbon_emissions.asl.json
 - An EventBridge scheduler `ExtractCarbonEmissionsFunctionScheduleEvent` as a trigger for the AWS Step Functions state machine which runs at the 15th day of every  month: cron(0 0 15 * ? *)
 - An IAM role `ccft-sam-script-ExtractCarbonEmissionsFunctionSche-{id}` for the EventBridge scheduler
@@ -259,7 +259,7 @@ You can find details on the resources that are created within the [`template.yam
 
 (6) If new monthly data is available, we can continue to extract the data for all accounts of an AWS organization. The state machine extracts triggers a Lambda function with the ccft-script to extract CCFT data for all account ID's, and stores the data within one .json file.
 
-(7) In the first invocation, an Athena database and table are created that point to the ccft-data bucket (in the case that this didn't happen yet in the backfill step). For every invocation, a view gets updated with the new data.
+(7) In the first invocation, an Athena database and table are created that point to the ccft-data bucket (in the case that this didn't happen yet in the backfill step). For every invocation, two views get updated with the new data.
 
 ### Q: How can I deploy the application?
 
@@ -375,7 +375,9 @@ You can change the timeframe in the Lambda function [`4_extract-carbon-emissions
 ### Q: What can I do with the data?
 As a result of a successful run through the state machine, new emissions data from the AWS Customer Carbon Footprint Tool will be available monthly in the S3 bucket `{AccountId}-{Region}-ccft-data` in .json format.
 
-To make it easier to use this data, the  state machine also creates an Athena table and view to directly query the data with SQL. Navigate to the Amazon Athena console and select the database **carbon_emissions**. You should see a table named `carbon_emissions_table` and a view called `carbon_emissions_view`. 
+To make it easier to use this data, the  state machine also creates an Athena table and two views to directly query the data with SQL. Navigate to the Amazon Athena console and select the database **carbon_emissions**. You should see a table named `carbon_emissions_table` and two views called `carbon_emissions_view` and `carbon_emissions_aggregate_view`. 
+
+`carbon_emissions_view` shows the monthly carbon emissions per account ID, product code and region code. `carbon_emissions_aggregate_view` shows the aggregated carbon emissions per account ID per month, and the respective entries for gridmixinefficiency and servermedianinefficiency.
 
 ![Athena Console Screenshot](/static/athena_table_view.png)
 
@@ -392,6 +394,7 @@ If you want to visualize the data, you can do so by using Amazon QuickSight. Che
 - If you're logged in to a management account of AWS Organizations, the customer carbon footprint tool reports an aggregate of the member account data for the duration that those accounts were a part of your management account. If you're logged in to a member account, the customer carbon footprint tool reports emission data for all the periods for this account. This is regardless of any changes that might have occurred to your account's associated membership in one of the AWS Organizations. 
 - If data isn't available for your account, your account might be too new to show data. After each month, you might have a delay of up to three months for AWS to show your carbon emission estimates.
 - If the emissions of an account for a specific month are `0`, `paceproductcode` and `regioncode` will be empty in the Athena view.
+- `servermedianinefficiency` and `gridmixinefficiency` data are provided per month per accountID, not in the granularity of `paceproductcode` and `regioncode`
 
 ###  What are costs for running this application?
 The cost for running this application depends on the number of accounts that are part of your organization. You can use this [AWS Pricing Calculator example](https://calculator.aws/#/estimate?id=1963803b68ed07e959eb8cbd2b7b3a7059bbfbfb) and adapt it to your requirements. There are no upfront cost to running this application; you pay for the resources that are created and used as part of the application. Major services used are the following:

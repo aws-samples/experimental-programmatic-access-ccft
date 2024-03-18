@@ -25,8 +25,13 @@ def lambda_handler(event, context):
         create_table_query = create_table_template.replace('location', emissions_bucket)
     start_query_execution(create_table_query)
     
-    # create or replace Athena view
+    # create or replace Athena view carbon_emissions_view
     with open("create_view.sql", 'r') as sql:
+        create_view_query = sql.read()
+    start_query_execution(create_view_query)
+
+    # create or replace Athena view carbon_emissions_aggregate_view
+    with open("create_aggregate_view.sql", 'r') as sql:
         create_view_query = sql.read()
     start_query_execution(create_view_query)
 
