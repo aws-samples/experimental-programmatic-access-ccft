@@ -360,6 +360,8 @@ In order to successfully extract carbon emissions data from the central account 
 
 (3) Optional: if you have given the IAM role a different name, you can change the parameter **CCFTRoleName** when deploying the SAM application. Make sure that all roles within all child accounts have the same name.
 
+(4) The `get-account-ids.py` Lambda function calls the AWS Organization's ListAccounts API. This operation can be called only from the organization's management account or by a member account that is a delegated administrator for an AWS service. You can set up a [delegation policy](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_delegate_policies.html?icmpid=docs_orgs_console) which allows the account where you're deploying this solution to call the ListAccounts API.
+
 ### Q: How can I deploy IAM roles into multiple AWS accounts?
 
 Depending on your AWS Organization set-up, there are several ways to achieve having the same IAM role with a trust relationship deployed into all accounts of your AWS organization.
