@@ -77,7 +77,7 @@ On a high-level, the output from calling the experimental programmatic access sc
 ```
 ![Console Reference](static/ccft-api-explanation.png)
 
-If your AWS Customer Carbon Footprint Tool emissions are zero, the script will also return `0.0`. Please note, that you will not see the product split in this case (`paceProductCode` under `carbonEmissionEntries`).
+If your AWS Customer Carbon Footprint Tool emissions are zero, the script will also return `0.0`. Please note, that you will not see the product split or region split in this case (`paceProductCode` and `regionCode` under `carbonEmissionEntries` will not be returned).
 
 Read the AWS Customer Carbon Footprint Tool documentation for more details to [understand your carbon emission estimations](https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/ccft-estimation.html).
 
@@ -395,7 +395,7 @@ If you want to visualize the data, you can do so by using Amazon QuickSight. Che
 ### Other things to consider
 - If you're logged in to a management account of AWS Organizations, the customer carbon footprint tool reports an aggregate of the member account data for the duration that those accounts were a part of your management account. If you're logged in to a member account, the customer carbon footprint tool reports emission data for all the periods for this account. This is regardless of any changes that might have occurred to your account's associated membership in one of the AWS Organizations. 
 - If data isn't available for your account, your account might be too new to show data. After each month, you might have a delay of up to three months for AWS to show your carbon emission estimates.
-- If the emissions of an account for a specific month are `0`, `paceproductcode` and `regioncode` will be empty in the Athena view.
+- If your AWS Customer Carbon Footprint Tool emissions are zero, the script will also return `0.0`. Please note, that you will not see the product split or region split in this case (`paceProductCode` and `regionCode` under `carbonEmissionEntries` will not be returned). In your Athena view, `paceproductcode` and `regioncode` will be empty if the emissions of an account for a specific month are `0`.
 - `servermedianinefficiency` and `gridmixinefficiency` data are provided per month per accountID, not in the granularity of `paceproductcode` and `regioncode`
 
 ###  What are costs for running this application?
