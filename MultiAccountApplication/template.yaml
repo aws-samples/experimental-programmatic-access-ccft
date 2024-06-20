@@ -286,6 +286,7 @@ Resources:
             - athena:GetQueryExecution
             - glue:CreateDatabase
             - glue:GetDatabase
+            - glue:GetDatabases
             - glue:CreateTable
             - glue:UpdateTable
             - glue:GetTable
