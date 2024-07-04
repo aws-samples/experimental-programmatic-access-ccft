@@ -7,7 +7,7 @@ The script can be used for programmatic access to the same AWS Customer Carbon F
 2. Lowered carbon reporting threshold to kilogram level (three decimal digits) as introduced in the [CSV file download feature](https://aws.amazon.com/blogs/aws-cloud-financial-management/increased-visibility-of-your-carbon-emissions-data-with-aws-customer-carbon-footprint-tool/).
 
 This repository gives you supporting source code for two use cases:
-1. If you are looking for a way to extract CCFT data for a small number of accounts on an ad-hoc basis, or want to include the script within your application, you can find the [`ccft_access.py`](./MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/ccft_access.py) script itself in the [`MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/`](./MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/) folder. To get started, check out the [General FAQs](#general-faq) and the [single-account specific FAQs](#single-account-script-faq) below.
+1. If you are looking for a way to extract CCFT data for a small number of accounts on an ad-hoc basis, or want to include the script within your application, you can find the [`ccft_access.py`](./MultiAccountApplication/lambda_functions/extract_carbon_emissions/ccft_access.py) script itself in the [`MultiAccountApplication/lambda_functions/extract_carbon_emissions/`](./MultiAccountApplication/lambda_functions/extract_carbon_emissions/) folder. To get started, check out the [General FAQs](#general-faq) and the [single-account specific FAQs](#single-account-script-faq) below.
 
 2. If you are looking for a way to automate the monthly extraction of new CCFT data within a multi account structure, this repository contains source code and supporting files for a serverless application that you can deploy with the SAM CLI or via the Serverless Application Repository. With it, you can deploy an application to extract new AWS Customer Carbon Footprint Tool data every month for all accounts of your AWS organization with the experimental script. You can find the supporting source code within the folder [`MultiAccountApplication`](./MultiAccountApplication). To get started, check out the [General FAQs](#general-faq) and the [multi-account specific FAQs](#multi-account-extraction-faq) below.
 
@@ -86,7 +86,7 @@ Read the AWS Customer Carbon Footprint Tool documentation for more details to [u
 
 ### Q: How do I use the script?
 
-1. Clone the repository and navigate to the folder [`MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/`](./MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/).
+1. Clone the repository and navigate to the folder [`MultiAccountApplication/lambda_functions/extract_carbon_emissions/`](./MultiAccountApplication/lambda_functions/extract_carbon_emissions/).
 2. [Assume](https://aws.amazon.com/premiumsupport/knowledge-center/iam-assume-role-cli/) a [role with access](#q-what-aws-iam-role-do-i-need) to the AWS Customer Carbon Footprint Tool.
 3. Execute the script:
 
@@ -232,11 +232,10 @@ This SAM template deploys the following resources:
   - `{AccountId}-{Region}-ccft-data` bucket where your carbon emissions data is being stored
   - `{AccountId}-{Region}-athenaresults` bucket where your Athena results are stored
 - Several Lambda functions with each a CloudWatch log group with retention time of 1 day and IAM roles with necessary permissions:
-  - `get-account-ids.py` : returns all account ID's of an AWS organization as well as the payer account ID
+  - `get-account-ids.py` : returns all account ID's of an AWS organization, including the payer account ID
   - `check-first-invocation.py` : checks if a backfill of data is needed in case of first invocation
-  - `backfill-data.py`: invokes the ccft_access.py script for a specific account for the past 40-4months and stores the data as one .json file in the `ccft-data` bucket (example: `2020-03-01to2023-03-01carbon_emissions.json`)
   - `extract-carbon-emissions-data.py` : executes the experimental programmatic access script for a given account ID and stores it in the `ccft-data` bucket as a .json file (example: `2023-04-01carbon_emissions.json`)
-  - `create-alter-athena-view.py` : creates an Athena database (if not exists) and an Athena table (if not exists), as well as creates or updates two Athena views which point to the `ccft-data` bucket
+  - `create_alter_athena_view.py` : creates an Athena database (if not exists) and an Athena table (if not exists), as well as creates or updates two Athena views which point to the `ccft-data` bucket
 - An AWS Step Function State Machine `ExtractCarbonEmissionsStateMachine`. You can find the definition in statemachine/extract_carbon_emissions.asl.json
 - An EventBridge scheduler `ExtractCarbonEmissionsFunctionScheduleEvent` as a trigger for the AWS Step Functions state machine which runs at the 15th day of every  month: cron(0 0 15 * ? *)
 - An IAM role `ccft-sam-script-ExtractCarbonEmissionsFunctionSche-{id}` for the EventBridge scheduler
@@ -244,22 +243,22 @@ This SAM template deploys the following resources:
 You can find details on the resources that are created within the [`template.yaml`](./MultiAccountApplication/template.yaml) file.
 
 ### Q: What does the state machine do?
-![alt text](/static/stepfunctions_graph.png)
+![alt text](/static/stepfunctions_graph.svg)
 
-(1) A Lambda function extracts all account ID's of the organization, as well as the payer account ID.
+- **GetAccountIDs**: A Lambda function extracts all account ID's of the organization including the payer account ID. It calculates the timeframes for the backfill and the retrieval of latest CCFT data.
 
-(2) The statemachine checks if it is invoked for the first time by checking if the created S3 bucket `{AccountId}-{Region}-ccft-data` is empty. If yes, it continues to (3). If there are already objects in the bucket (which means it is not the first invocation), it directly jumps to (4).
+- **CheckFirstInvocation**: The statemachine checks if it is invoked for the first time by checking if the created S3 bucket `{AccountId}-{Region}-ccft-data` is empty. If yes, it continues to (3). If there are already objects in the bucket (which means it is not the first invocation), it directly jumps to **ExtractCarbonEmissions-Canary**.
 
-(3) The first invocation triggers a backfill of data for the past 40-4months.
+- **ProcessAccounts-Backfill**: The first invocation triggers a backfill of data for the past 40-4months.
   For every account that belongs to the organization you are running this in a Lambda function with the ccft script is triggered, which extracts the AWS Customer Carbon Footprint Tool data for the past 40 months to the past 4 months and stores it as one .json file per account in the ccft-data bucket, since the maximum duration that we can extract carbon emissions data from is 36 months. (Example: If the first invocation happens in August 2023, the script will extract data from April 2020 to April 2023). It then also creates an Athena database and table, as well as a view which unnests the .json data.
 
-(4) As the publishing date for new monthly CCFT data can vary, the state machine first checks if there is data for the payer account ID available (for three months ago). If not, it goes to (5), if there is data available it goes to (6).
+- **ExtractCarbonEmissions-Canary**/ **Choice: New Data Available**: As the publishing date for new monthly CCFT data can vary, the state machine first checks if there is data for a canary account (by default the payer) available (for three months ago). If not, it goes to a waiting state (**RetryLambdaDaily**). If there is data available, it goes forward to **ProcessAccounts**.
 
-(5) If new monthly data is not yet available, the statemachine waits for one day and then tries (4) again.
+- **RetryLambdaDaily**: If new monthly data is not yet available, the statemachine waits for one day and then tries (4) again.
 
-(6) If new monthly data is available, we can continue to extract the data for all accounts of an AWS organization. The state machine extracts triggers a Lambda function with the ccft-script to extract CCFT data for all account ID's, and stores the data within one .json file.
+- **ProcessAccounts**: If new monthly data is available, we can continue to extract the data for all accounts of an AWS organization. The state machine extracts triggers a Lambda function with the ccft-script to extract CCFT data for all account ID's, and stores the data within one .json file.
 
-(7) In the first invocation, an Athena database and table are created that point to the ccft-data bucket (in the case that this didn't happen yet in the backfill step). For every invocation, two views get updated with the new data.
+- **CreateAthenaTableView**: If they don't exist, the Athena database, table, and view are created that point to the ccft-data bucket (in the case that this didn't happen yet in the backfill step). For every invocation, two views get updated with the new data.
 
 ### Q: How can I deploy the application?
 
@@ -372,7 +371,7 @@ Depending on your AWS Organization set-up, there are several ways to achieve hav
 
 ### Q: Can I change the queried timeframe?
 The application extracts data for three months past the month it is running. Example: The application extracts data for April 2023 when it runs in July 2023.
-You can change the timeframe in the Lambda function [`4_extract-carbon-emissions/ccft-access-lambda.py`](./MultiAccountApplication/lambda-functions/4_extract_carbon_emissions/ccft-access-lambda.py) by changing `start_date` in line 40 and `end_date` in line 41. Format is `YYYY-MM-DD`.
+You can change the timeframe in the Lambda function [`extract-carbon-emissions/ccft-access-lambda.py`](./MultiAccountApplication/lambda_functions/extract_carbon_emissions/ccft-access-lambda.py) by changing `start_date` in line 40 and `end_date` in line 41. Format is `YYYY-MM-DD`.
 
 ### Q: What can I do with the data?
 As a result of a successful run through the state machine, new emissions data from the AWS Customer Carbon Footprint Tool will be available monthly in the S3 bucket `{AccountId}-{Region}-ccft-data` in .json format.
@@ -409,6 +408,23 @@ The cost for running this application depends on the number of accounts that are
   - Example: The size of the backfill .json file is ~10KB, and the size of a .json file for one month's data ~1KB (note that this depends on the specific data you get back). Running the application for 100 AWS accounts, this would result in a total storage capacity for the first month of 1.1MB, with an additional 0.1MB per month.
 - [Amazon Athena](https://aws.amazon.com/athena/pricing/)
   - Example: You run 10 queries a month and scan 100MB of data per query (note that this depends on the number of accounts of your AWS organization).
+  
+### Q: How can I specify the account ids to retrieve data from?
+
+By default the application retrieves data from all accounts of the AWS Organization with the payer as the canary account. If you want to override the account ids you can add them to the scheduling event in the template:
+
+```
+ComplexScheduleEvent:
+  Type: ScheduleV2
+  Properties:
+    ScheduleExpression: "cron(0 0 15 * ? *)"
+    Input: "{\"override_accounts\": [\"YOUR-ACCOUNT-ID\", \"YOUR-OTHER-ID\"]}" # add this line
+    FlexibleTimeWindow:
+      Mode: FLEXIBLE
+      MaximumWindowInMinutes: 60
+```
+
+The first account in the list will be used as the canary account.
 
 ### Q: Cleanup - How can I delete the application?
 

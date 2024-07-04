@@ -21,30 +21,59 @@ import boto3
 import os
 import ccft_access
 import json
-from datetime import datetime, date
-from dateutil.relativedelta import relativedelta
+from urllib.parse import urlencode
+import logging
+
+s3 = boto3.resource('s3')
+sts_client = boto3.client('sts')
+s3_bucket = os.environ['bucketName']
+role_name = os.environ['ccftRole']
+s3_obj_name = os.environ['fileName']
+
+log = logging.getLogger(__name__)
 
 def lambda_handler(event, context):
-    account = event
-    s3 = boto3.resource('s3')
-    sts_client = boto3.client('sts')
-    s3_bucket = os.environ['bucketName']
-    role_name = os.environ['ccftRole']
-    s3_obj_name = os.environ['fileName']
+    """Lambda handler to retrieve and write ccft data to S3 for the timeframe from start_date to 
+    end_date.
+
+    Args:
+        event: the AWS Lambda event.
+        
+            Must contain:
+            
+            - AWS account id as event/account
+            - query start date as event/timeframe/start_date
+            - query end date as event/timeframe/end_date
+            
+            May contain:
+            
+            - skip_write: if set to True, the function will not write the data to S3
+            
+        context: the AWS Lambda context
+
+    Raises:
+        ValueError: if the event does not contain start_date and end_date
+
+    Returns:
+        isDataAvailable: if data is available for the given timeframe
+    """
+    # get start/ end/ account from the event
+    # validate argument event[timeframe]['start'] and event[timeframe]['end']
+    if ('timeframe' not in event or 
+        'end_date' not in event['timeframe'] or 
+        'start_date' not in event['timeframe']):
+        raise ValueError('event must have dates (YYYY-MM-DD) in event/timeframe/start_date and event/timeframe/end_date')
+    if 'account' not in event:
+        raise ValueError('event must have account-id in event/account')
+
+    skip_write = ('skip_write' in event) and event['skip_write']
+
+    account = event['account']
+    start_date = event['timeframe']['start_date']
+    end_date = event['timeframe']['end_date']
+
     request_id = context.aws_request_id
 
-    # since the maximum time to extract carbon emissions data is 36months, we can use the timeframe from 40-4 months back
-    four_months = date.today() - relativedelta(months=4)
-    # get the date with 1st day of the month
-    year = four_months.year
-    month = four_months.month
-    first_date = datetime(year, month, 1)
-    
-    # The default end date is the first date of the month four months ago, and the default start date is 36 months before
-    # If you want to extract carbon emissions data for a different time frame, you can change it manually here
-    end_date=first_date.strftime("%Y-%m-%d")
-    start_date=(first_date - relativedelta(months=36)).strftime("%Y-%m-%d")
-    
     # Create a new session and get credentials from target role
     target_account_role_arn = f"arn:aws:iam::{account}:role/{role_name}"
     target_account_role = sts_client.assume_role(
@@ -65,14 +94,27 @@ def lambda_handler(event, context):
     credentials = new_session.get_credentials()
 
     try:
+        log.debug(f"Extracting emissions data from {start_date} to {end_date}")
         emissions_data = ccft_access.extract_emissions_data(start_date, end_date, credentials)
-        # save json to file in s3 bucket
-        s3_obj_name = str(account)+"/"+str(request_id)+"_"+str(start_date)+"to"+str(end_date)+"carbon_emissions.json"
-        s3.Object(s3_bucket, s3_obj_name).put(Body=json.dumps(emissions_data))
-        message = "Successfully saved data to S3 bucket"
+
+        # check if new emissions data is available
+        carbonEmissionEntries = emissions_data['emissions']['carbonEmissionEntries']
+        if not carbonEmissionEntries:
+            isDataAvailable = False
+            message = "No new data is available"
+        else:
+            isDataAvailable = True
+            # save json to file in s3 bucket
+            if skip_write:
+                message = f"Skipped saving data for account {account}"
+            else:
+                s3_obj_name = f"{account}/{request_id}_{start_date}carbon_emissions.json"
+                s3.Object(s3_bucket, s3_obj_name).put(Body=json.dumps(emissions_data))
+                message = f"Successfully saved data to S3 bucket for account {account}"
         return {
-            'message': message
-        }   
+            'message': message,
+            'isDataAvailable': isDataAvailable
+        }
 
     except Exception as e:
         #If account is less than three months old, no carbon emissions data will be available
@@ -81,5 +123,5 @@ def lambda_handler(event, context):
             message = "No carbon footprint report is available for account", account, "at this time. If no report is available, your account might be too new to show data. There is a delay of three months between the end of a month and when emissions data is available."
         return {
                 'message': message,
+                'isDataAvailable': False
             }
-            
