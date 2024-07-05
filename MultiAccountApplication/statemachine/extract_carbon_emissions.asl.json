@@ -1,155 +1,182 @@
 {
     "Comment": "A state machine that extracts carbon emissions data",
-    "StartAt": "GetAccountIDs",
+    "StartAt": "Parallel",
     "States": {
-        "GetAccountIDs": {
-            "Type": "Task",
-            "Resource": "${GetAccountIDsFunctionArn}",
-            "Catch": [
+        "Parallel": {
+            "Type": "Parallel",
+            "End": true,
+            "Branches": [
                 {
-                  "ErrorEquals": ["States.ALL"],
-                  "Next": "HandleError"
-                }
-            ],
-            "Next": "CheckFirstInvocation"
-        },
-        "CheckFirstInvocation": {
-            "Type": "Task",
-            "Resource": "${CheckFirstInvocationFunctionArn}",
-            "ResultPath": "$.SecondStateResult",
-            "Next": "Choice: First Invocation"
-        },
-        "Choice: First Invocation": {
-            "Type": "Choice",
-            "InputPath": "$", 
-            "Choices": [
-                {
-                  "Variable": "$.SecondStateResult.isEmpty",
-                  "BooleanEquals": true,
-                  "Next": "ProcessAccounts-Backfill"
+                    "StartAt": "CreateAthenaTableView",
+                    "States": {
+                        "CreateAthenaTableView": {
+                            "Type": "Task",
+                            "Resource": "${CreateAlterAthenaViewFunctionArn}",
+                            "ResultPath": "$.athena",
+                            "End": true
+                        }
+                    }
                 },
                 {
-                    "Variable": "$.SecondStateResult.isEmpty",
-                    "BooleanEquals": false,
-                    "Next": "ExtractCarbonEmissions-Payer"
+                    "StartAt": "GetAccountIDs",
+                    "States": {
+                        "GetAccountIDs": {
+                            "Type": "Task",
+                            "Resource": "${GetAccountIDsFunctionArn}",
+                            "Next": "CheckFirstInvocation"
+                        },
+                        "CheckFirstInvocation": {
+                            "Type": "Task",
+                            "Resource": "${CheckFirstInvocationFunctionArn}",
+                            "ResultPath": "$.SecondStateResult",
+                            "Next": "Choice: First Invocation"
+                        },
+                        "Choice: First Invocation": {
+                            "Type": "Choice",
+                            "InputPath": "$",
+                            "Choices": [
+                                {
+                                    "Variable": "$.SecondStateResult.isEmpty",
+                                    "BooleanEquals": true,
+                                    "Next": "ProcessAccounts-Backfill"
+                                },
+                                {
+                                    "Variable": "$.SecondStateResult.isEmpty",
+                                    "BooleanEquals": false,
+                                    "Next": "ExtractCarbonEmissions-Canary"
+                                }
+                            ]
+                        },
+                        "ProcessAccounts-Backfill": {
+                            "Type": "Map",
+                            "InputPath": "$",
+                            "ItemsPath": "$.account_ids",
+                            "ItemSelector": {
+                                "account.$": "$$.Map.Item.Value",
+                                "timeframe.$": "$.timeframes.backfill"
+                              },
+                            "ItemProcessor": {
+                                "ProcessorConfig": {
+                                    "Mode": "INLINE"
+                                },
+                                "StartAt": "ExtractCarbonEmissions-Backfill",
+                                "States": {
+                                    "ExtractCarbonEmissions-Backfill": {
+                                        "Type": "Task",
+                                        "Resource": "${ExtractCarbonEmissionsFunctionArn}",
+                                        "End": true,
+                                        "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "Next": "HandleError-Process Accounts1"
+                                            }
+                                        ]
+                                    },
+                                    "HandleError-Process Accounts1": {
+                                        "Type": "Pass",
+                                        "Result": "The ProcessAccounts Lambda function failed.",
+                                        "End": true
+                                    }
+                                }
+                            },
+                            "ResultSelector": {
+                                "Accounts processed": "Done"
+                            },
+                            "ResultPath": "$.result",
+                            "Next": "ExtractCarbonEmissions-Canary"
+                        },
+                        "ExtractCarbonEmissions-Canary": {
+                            "Type": "Task",
+                            "InputPath": "$",
+                            "Parameters": {
+                                "account.$": "$.account_ids[0]",
+                                "timeframe.$": "$.timeframes.new_data",
+                                "skip_write": true
+                              },
+                            "Resource": "${ExtractCarbonEmissionsFunctionArn}",
+                            "Catch": [
+                                {
+                                    "ErrorEquals": [
+                                        "States.ALL"
+                                    ],
+                                    "Next": "HandleError"
+                                }
+                            ],
+                            "Next": "Choice: New Data Available",
+                            "ResultPath": "$.FourthStateResult"
+                        },
+                        "Choice: New Data Available": {
+                            "Type": "Choice",
+                            "Choices": [
+                                {
+                                    "Variable": "$.FourthStateResult.isDataAvailable",
+                                    "BooleanEquals": true,
+                                    "Next": "ProcessAccounts"
+                                },
+                                {
+                                    "Variable": "$.FourthStateResult.isDataAvailable",
+                                    "BooleanEquals": false,
+                                    "Next": "RetryLambdaDaily"
+                                }
+                            ],
+                            "OutputPath": "$"
+                        },
+                        "RetryLambdaDaily": {
+                            "Type": "Wait",
+                            "Seconds": 86400,
+                            "Next": "ExtractCarbonEmissions-Canary"
+                        },
+                        "ProcessAccounts": {
+                            "Type": "Map",
+                            "InputPath": "$",
+                            "ItemsPath": "$.account_ids",
+                            "ItemSelector": {
+                                "account.$": "$$.Map.Item.Value",
+                                "timeframe.$": "$.timeframes.new_data"
+                              },
+                            "ItemProcessor": {
+                                "ProcessorConfig": {
+                                    "Mode": "INLINE"
+                                },
+                                "StartAt": "ExtractCarbonEmissions-All",
+                                "States": {
+                                    "ExtractCarbonEmissions-All": {
+                                        "Type": "Task",
+                                        "Resource": "arn:aws:states:::lambda:invoke",
+                                        "OutputPath": "$.Payload.message",
+                                        "Parameters": {
+                                            "Payload.$": "$",
+                                            "FunctionName": "${ExtractCarbonEmissionsFunctionArn}"
+                                        },
+                                        "End": true,
+                                        "Catch": [
+                                            {
+                                                "ErrorEquals": [
+                                                    "States.ALL"
+                                                ],
+                                                "Next": "HandleError-Process Accounts"
+                                            }
+                                        ]
+                                    },
+                                    "HandleError-Process Accounts": {
+                                        "Type": "Pass",
+                                        "ResultPath": "$.message",
+                                        "Result": "Check that you have the necessary permissions and the role exists.",
+                                        "End": true
+                                    }
+                                }
+                            },
+                            "End": true
+                        },
+                        "HandleError": {
+                            "Type": "Pass",
+                            "End": true
+                        }
+                    }
                 }
             ]
-        },
-        "ProcessAccounts-Backfill": {
-            "Type": "Map",
-            "InputPath": "$.account_ids",
-            "ItemProcessor": {
-                "ProcessorConfig": {
-                "Mode": "INLINE"
-                },
-                "StartAt": "ExtractCarbonEmissions-Backfill",
-                "States": {
-                    "ExtractCarbonEmissions-Backfill": {
-                        "Type": "Task",
-                        "Resource": "${BackfillDataFunctionArn}",
-                    "End": true,
-                    "Catch": [
-                        {
-                          "ErrorEquals": ["States.ALL"],
-                          "Next": "HandleError-Process Accounts1"
-                        }
-                      ]
-                    },
-                    "HandleError-Process Accounts1": {
-                        "Type": "Pass",
-                        "Result": "The ProcessAccounts Lambda function failed.",
-                        "End": true
-                    }
-                }
-            },
-            "ResultSelector": {"Accounts processed":"Done"},
-            "ResultPath": "$.result",
-            "Next": "CreateAthenaTableView"
-        },
-        "CreateAthenaTableView": {
-            "Type": "Task",
-            "Resource": "${CreateAlterAthenaViewFunctionArn}",
-            "ResultPath": "$.athena",
-            "Next": "ExtractCarbonEmissions-Payer"
-        },
-        "ExtractCarbonEmissions-Payer": {
-            "Type": "Task",
-            "InputPath": "$.account_id",
-            "Resource": "${ExtractCarbonEmissionsFunctionArn}",
-            "Catch": [
-                {
-                  "ErrorEquals": ["States.ALL"],
-                  "Next": "HandleError"
-                }
-            ],
-            "Next": "Choice: New Data Available",
-            "ResultPath": "$.FourthStateResult"
-        },
-        "Choice: New Data Available": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                  "Variable": "$.FourthStateResult.isDataAvailable",
-                  "BooleanEquals": true,
-                  "Next": "ProcessAccounts"
-                },
-                {
-                    "Variable": "$.FourthStateResult.isDataAvailable",
-                    "BooleanEquals": false,
-                    "Next": "RetryLambdaDaily"
-                }
-            ],
-            "OutputPath": "$"
-        },
-        "RetryLambdaDaily": {
-            "Type": "Wait",
-            "Seconds": 86400,
-            "Next": "ExtractCarbonEmissions-Payer"
-        },
-        "ProcessAccounts": {
-            "Type": "Map",
-            "InputPath": "$.account_ids",
-            "ItemProcessor": {
-                "ProcessorConfig": {
-                "Mode": "INLINE"
-                },
-                "StartAt": "ExtractCarbonEmissions-All",
-                "States": {
-                    "ExtractCarbonEmissions-All": {
-                        "Type": "Task",
-                        "Resource": "arn:aws:states:::lambda:invoke",
-                        "OutputPath": "$.Payload.message",
-                        "Parameters": {
-                            "Payload.$": "$",
-                            "FunctionName": "${ExtractCarbonEmissionsFunctionArn}"
-                        },
-                    "End": true,
-                    "Catch": [
-                        {
-                          "ErrorEquals": ["States.ALL"],
-                          "Next": "HandleError-Process Accounts"
-                        }
-                      ]
-                    },
-                    "HandleError-Process Accounts": {
-                        "Type": "Pass",
-                        "ResultPath": "$.message",
-                        "Result": "Check that you have the necessary permissions and the role exists.",
-                        "End": true
-                    }
-                }
-            },
-            "Next": "CreateAlterAthenaView"
-        },
-        "CreateAlterAthenaView": {
-            "Type": "Task",
-            "Resource": "${CreateAlterAthenaViewFunctionArn}",
-            "End": true
-        },
-        "HandleError": {
-            "Type": "Pass",
-            "End": true
         }
     }
 }
-  

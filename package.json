@@ -1,6 +1,6 @@
 {
     "name": "experimental-programmatic-access-ccft",
-    "version": "1.0.0",
+    "version": "1.1.4",
     "description": "This is a serverless application that automates the monthly extraction of new CCFT data within a multi account structure.",
     "author": {
       "name": "experimental-programmatic-access-ccft-team"

@@ -1,4 +1,4 @@
-CREATE EXTERNAL TABLE IF NOT EXISTS `carbon_emissions_table` (
+CREATE EXTERNAL TABLE IF NOT EXISTS `${database_name}`.`carbon_emissions_table` (
   `accountid` string, 
   `query` struct<queryDate:date,
                 startDate:date,
@@ -14,4 +14,4 @@ STORED AS INPUTFORMAT
 OUTPUTFORMAT 
   'org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat'
 LOCATION
-  'location'
+  '${emissions_location}'

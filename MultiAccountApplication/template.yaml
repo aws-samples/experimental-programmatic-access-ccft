@@ -7,7 +7,7 @@ Metadata:
     Author: experimental-programmatic-access-ccft-team
     LicenseUrl: ../LICENSE
     ReadmeUrl: ../README.md
-    SemanticVersion: 1.1.3
+    SemanticVersion: 1.1.4
     HomePageUrl: https://github.com/aws-samples/experimental-programmatic-access-ccft
     SourceCodeUrl: https://github.com/aws-samples/experimental-programmatic-access-ccft
 Description: >
@@ -77,14 +77,13 @@ Resources:
         GetAccountIDsFunctionArn: !GetAtt GetAccountIDsFunction.Arn
         CreateAlterAthenaViewFunctionArn: !GetAtt CreateAlterAthenaViewFunction.Arn
         CheckFirstInvocationFunctionArn: !GetAtt CheckFirstInvocationFunction.Arn
-        BackfillDataFunctionArn: !GetAtt BackfillDataFunction.Arn
         CarbonEmissionsDataBucketArn: !GetAtt CarbonEmissionsDataBucket.Arn
         CarbonEmissionsDataBucketName: !Ref CarbonEmissionsDataBucket    
       Events:
         ComplexScheduleEvent:
           Type: ScheduleV2
           Properties:
-            ScheduleExpression: "cron(0 0 15 * ? *)"  
+            ScheduleExpression: "cron(0 0 15 * ? *)"
             FlexibleTimeWindow:
               Mode: FLEXIBLE
               MaximumWindowInMinutes: 60
@@ -96,9 +95,7 @@ Resources:
         - LambdaInvokePolicy:
             FunctionName: !Ref CreateAlterAthenaViewFunction 
         - LambdaInvokePolicy:
-            FunctionName: !Ref CheckFirstInvocationFunction    
-        - LambdaInvokePolicy:
-            FunctionName: !Ref BackfillDataFunction      
+            FunctionName: !Ref CheckFirstInvocationFunction
         - Statement:
           - Sid: AllowStartExecution
             Effect: Allow
@@ -114,8 +111,8 @@ Resources:
     Type: AWS::Serverless::Function 
     Properties:
       FunctionName: "get-account-ids"
-      CodeUri: lambda-functions/1_get_account_ids/
-      Handler: get-account-ids.lambda_handler
+      CodeUri: lambda_functions/get_account_ids/
+      Handler: app.lambda_handler
       Policies:
         - Statement:
           - Sid: ListAccounts
@@ -147,8 +144,8 @@ Resources:
     Type: AWS::Serverless::Function 
     Properties:
       FunctionName: "check-first-invocation"
-      CodeUri: lambda-functions/2_check_first_invocation/
-      Handler: check-first-invocation.lambda_handler
+      CodeUri: lambda_functions/check_first_invocation/
+      Handler: app.lambda_handler
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref CarbonEmissionsDataBucket
@@ -178,49 +175,6 @@ Resources:
       RetentionInDays: 1
 
   # -------------------------------------------------------------------------------------------------------------------
-  # Create a Lambda function to backfill data
-  # -------------------------------------------------------------------------------------------------------------------
-
-  BackfillDataFunction:
-    Type: AWS::Serverless::Function 
-    Properties:
-      FunctionName: "backfill-data"
-      CodeUri: lambda-functions/3_backfill_data/
-      Handler: backfill-data.lambda_handler
-      Policies:
-        - Statement:
-          - Sid: GetCarbonFootprintSummary
-            Effect: Allow
-            Action:
-            - sustainability:GetCarbonFootprintSummary
-            Resource: '*'
-          - Sid: S3WritePolicy
-            Effect: Allow
-            Action:
-            - s3:PutObject
-            Resource: !Sub "${CarbonEmissionsDataBucket.Arn}/*"
-          - Sid: STSAssumeRole
-            Effect: Allow
-            Action:
-            - sts:AssumeRole
-            Resource: '*'
-      Runtime: python3.11
-      Architectures:
-        - arm64
-      Environment:
-        Variables:
-          bucketName: !Ref CarbonEmissionsDataBucket
-          ccftRole: !Ref CCFTRoleName
-          fileName: !Ref CarbonEmissionsDataFileName
-      Timeout: 20
-
-  BackfillDateFunctionLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub "/aws/lambda/${BackfillDataFunction}"
-      RetentionInDays: 1
-
-  # -------------------------------------------------------------------------------------------------------------------
   # Create a Lambda function + log group to extract AWS Customer Carbon Footprint Tool data.
   # -------------------------------------------------------------------------------------------------------------------
 
@@ -228,8 +182,8 @@ Resources:
     Type: AWS::Serverless::Function 
     Properties:
       FunctionName: "extract-carbon-emissions-data"
-      CodeUri: lambda-functions/4_extract_carbon_emissions/
-      Handler: ccft-access-lambda.lambda_handler
+      CodeUri: lambda_functions/extract_carbon_emissions/
+      Handler: app.lambda_handler
       Policies:
         - Statement:
           - Sid: GetCarbonFootprintSummary
@@ -263,6 +217,18 @@ Resources:
       LogGroupName: !Sub "/aws/lambda/${ExtractCarbonEmissionsFunction}"
       RetentionInDays: 1
 
+  AthenaWorkgroup:
+    Type: AWS::Athena::WorkGroup
+    Properties:
+      Name: !Sub "${GlueDatabaseName}-workgroup"
+      Description: !Sub "Workgroup for queries to the ${GlueDatabaseName} database by the experimental programmatic access"
+      RecursiveDeleteOption: true
+      State: "ENABLED"
+      WorkGroupConfiguration:
+        EnforceWorkGroupConfiguration: true
+        ResultConfiguration:
+          OutputLocation: !Sub "s3://${AthenaResultBucket}"
+
   # -------------------------------------------------------------------------------------------------------------------
   # Create a Lambda function to create Athena table and view.
   # -------------------------------------------------------------------------------------------------------------------
@@ -271,17 +237,15 @@ Resources:
     Type: AWS::Serverless::Function 
     Properties:
       FunctionName: "create-alter-athena-view"
-      CodeUri: lambda-functions/5_create_alter_athena_view/
-      Handler: create-alter-athena-view.lambda_handler
+      CodeUri: lambda_functions/create_alter_athena_view/
+      Handler: app.lambda_handler
       Policies:
         - Statement:
           - Sid: Athena
             Effect: Allow
             Action:
             - athena:StartQueryExecution
-            - athena:StartQueryExecution
             - athena:GetQueryResults
-            - athena:GetWorkGroup
             - athena:StopQueryExecution
             - athena:GetQueryExecution
             - glue:CreateDatabase
@@ -290,23 +254,24 @@ Resources:
             - glue:UpdateTable
             - glue:GetTable
             Resource:
-            - Fn::Sub: arn:aws:athena:${AWS::Region}:${AWS::AccountId}:workgroup/*
-            - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
-            - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GlueDatabaseName}
-            - Fn::Sub: arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GlueDatabaseName}/*
+            - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${AthenaWorkgroup}"
+            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GlueDatabaseName}"
+            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GlueDatabaseName}/*"
           - Sid: S3Allow
             Effect: Allow
             Action:
             - s3:*
             Resource: 
             - !Sub "${CarbonEmissionsDataBucket.Arn}/*"
-            - !Sub "${AthenaResultBucket.Arn}"
             - !Sub "${AthenaResultBucket.Arn}/*"
+            - !Sub "${AthenaResultBucket.Arn}"
       Runtime: python3.11
       Architectures:
         - arm64
       Environment:
         Variables:
           emissionsBucketName: !Ref CarbonEmissionsDataBucket
-          athenaBucketName: !Ref AthenaResultBucket
+          workgroupName: !Ref AthenaWorkgroup
           glueDatabaseName: !Ref GlueDatabaseName
+      Timeout: 20
