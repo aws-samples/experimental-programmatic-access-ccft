@@ -1,5 +1,8 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Creates a stack containing an IAM Role for reading CCFT data
+Description:  >
+  Creates a stack containing an IAM Role for reading CCFT data.
+
+  Belongs to the SAM template to automate the monthly extraction of new CCFT data within a multi account structure (uksb-880c16twdr).
 Parameters:
   CCFTReadDataRole:
     Type: String
