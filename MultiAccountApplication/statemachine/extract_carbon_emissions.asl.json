@@ -55,9 +55,11 @@
                                 "account.$": "$$.Map.Item.Value",
                                 "timeframe.$": "$.timeframes.backfill"
                               },
+                            "ResultPath": null,
                             "ItemProcessor": {
                                 "ProcessorConfig": {
-                                    "Mode": "INLINE"
+                                    "Mode": "DISTRIBUTED",
+                                    "ExecutionType": "STANDARD"
                                 },
                                 "StartAt": "ExtractCarbonEmissions-Backfill",
                                 "States": {
@@ -81,10 +83,6 @@
                                     }
                                 }
                             },
-                            "ResultSelector": {
-                                "Accounts processed": "Done"
-                            },
-                            "ResultPath": "$.result",
                             "Next": "ExtractCarbonEmissions-Canary"
                         },
                         "ExtractCarbonEmissions-Canary": {
@@ -132,13 +130,15 @@
                             "Type": "Map",
                             "InputPath": "$",
                             "ItemsPath": "$.account_ids",
+                            "ResultPath": null,
                             "ItemSelector": {
                                 "account.$": "$$.Map.Item.Value",
                                 "timeframe.$": "$.timeframes.new_data"
                               },
                             "ItemProcessor": {
                                 "ProcessorConfig": {
-                                    "Mode": "INLINE"
+                                    "Mode": "DISTRIBUTED",
+                                    "ExecutionType": "STANDARD"
                                 },
                                 "StartAt": "ExtractCarbonEmissions-All",
                                 "States": {
