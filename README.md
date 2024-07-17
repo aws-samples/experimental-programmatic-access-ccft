@@ -371,7 +371,15 @@ Depending on your AWS Organization set-up, there are several ways to achieve hav
 
 ### Q: Can I change the queried timeframe?
 The application extracts data for three months past the month it is running. Example: The application extracts data for April 2023 when it runs in July 2023.
-You can change the timeframe in the Lambda function [`extract-carbon-emissions/ccft-access-lambda.py`](./MultiAccountApplication/lambda_functions/extract_carbon_emissions/ccft-access-lambda.py) by changing `start_date` in line 40 and `end_date` in line 41. Format is `YYYY-MM-DD`.
+
+You can override the timeframe when you manually start the Step Functions workflow.
+- In the Step Functions console, click on `New Execution`
+- Enter the following input and change "YYYY-MM-DD". Remember that the application extracts data for three months past the override date. 
+```
+{
+  "override_today": "YYYY-MM-DD"
+}
+```
 
 ### Q: What can I do with the data?
 As a result of a successful run through the state machine, new emissions data from the AWS Customer Carbon Footprint Tool will be available monthly in the S3 bucket `{AccountId}-{Region}-ccft-data` in .json format.
