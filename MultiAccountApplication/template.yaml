@@ -49,6 +49,8 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub "${AWS::AccountId}-${AWS::Region}-${CarbonEmissionsDataBucketName}"
+      VersioningConfiguration:
+        Status: Enabled
 
   # -------------------------------------------------------------------------------------------------------------------
   # Create an S3 bucket to be used as Athena output location, with a retention time of files of 1 day.
@@ -63,6 +65,8 @@ Resources:
           - Id: DeleteAfterOneDay
             Status: Enabled
             ExpirationInDays: 1
+      VersioningConfiguration:
+        Status: Enabled
 
   # -------------------------------------------------------------------------------------------------------------------
   # Create an AWS Step Function State Machine and a EventBridge rule to trigger the Step Functions workflow.
