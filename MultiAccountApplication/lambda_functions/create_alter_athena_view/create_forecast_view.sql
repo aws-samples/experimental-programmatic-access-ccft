@@ -1,4 +1,4 @@
-CREATE OR REPLACE VIEW "${database_name}"."carbon_emissions_forecast_view1" AS
+CREATE OR REPLACE VIEW "${database_name}"."carbon_emissions_forecast_view" AS
 SELECT
   cet.accountid
 , forecast.carboninefficiency
