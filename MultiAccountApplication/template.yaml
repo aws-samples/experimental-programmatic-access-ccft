@@ -200,7 +200,7 @@ Resources:
             Effect: Allow
             Action:
             - sts:AssumeRole
-            Resource: '*'
+            Resource: !Sub "arn:${AWS::Partition}:iam::*:role/${CCFTRoleName}"
       Runtime: python3.11
       Architectures:
         - arm64
@@ -255,9 +255,9 @@ Resources:
             - glue:GetTable
             Resource:
             - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${AthenaWorkgroup}"
-            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GlueDatabaseName}"
-            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GlueDatabaseName}/*"
+            - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+            - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${GlueDatabaseName}"
+            - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GlueDatabaseName}/*"
           - Sid: S3Allow
             Effect: Allow
             Action:
