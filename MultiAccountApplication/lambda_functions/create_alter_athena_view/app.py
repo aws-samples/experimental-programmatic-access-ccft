@@ -19,4 +19,6 @@ def lambda_handler(*_):
 
     util.run_query(util.load_query('create_aggregate_view.sql', placeholders), workgroup_name)
 
+    util.run_query(util.load_query('create_forecast_view.sql', placeholders), workgroup_name)
+
     return None
