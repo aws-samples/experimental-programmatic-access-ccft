@@ -50,6 +50,8 @@ Resources:
     Metadata:
       guard:
         SuppressedRules:
+        # We neither log nor version the bucket for the code sample to reduce storage.
+        # Do versioning and lifecycling of deleted versions as needed.
         - S3_BUCKET_LOGGING_ENABLED
         - S3_BUCKET_VERSIONING_ENABLED
     Properties:
@@ -87,6 +89,8 @@ Resources:
     Metadata:
       guard:
         SuppressedRules:
+        # We neither log nor version the bucket for the code sample to reduce storage.
+        # Do versioning and lifecycling of deleted versions as needed.
         - S3_BUCKET_LOGGING_ENABLED
         - S3_BUCKET_VERSIONING_ENABLED
     Properties:
@@ -285,6 +289,8 @@ Resources:
     Metadata:
       guard:
         SuppressedRules:
+        # Log group data is always encrypted in CloudWatch Logs.
+        # By default, CloudWatch Logs uses server-side encryption for the log data at rest.
         - CLOUDWATCH_LOG_GROUP_ENCRYPTED
     Properties:
       LogGroupName: !Sub "/aws/lambda/${ExtractCarbonEmissionsFunction}"
