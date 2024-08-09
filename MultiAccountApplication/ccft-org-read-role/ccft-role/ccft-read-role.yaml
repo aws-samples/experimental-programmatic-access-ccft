@@ -12,8 +12,26 @@ Parameters:
     Description: Management Account ID number
     Type: String
 Resources:
+
+  CCFTReadAccountDataPolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: !Ref CCFTReadDataRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'sustainability:GetCarbonFootprintSummary'
+            Resource: "*"
+
   CCFTReadAccountDataRole:
     Type: 'AWS::IAM::Role'
+    Metadata:
+      guard:
+        SuppressedRules:
+          # we don't need to reuse the policy in other roles and inline it
+          - IAM_NO_INLINE_POLICY_CHECK
     Properties:
       RoleName:
         !Ref CCFTReadDataRole

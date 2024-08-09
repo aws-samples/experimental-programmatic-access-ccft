@@ -47,8 +47,36 @@ Resources:
 
   CarbonEmissionsDataBucket:
     Type: AWS::S3::Bucket
+    Metadata:
+      guard:
+        SuppressedRules:
+        - S3_BUCKET_LOGGING_ENABLED
+        - S3_BUCKET_VERSIONING_ENABLED
     Properties:
       BucketName: !Sub "${AWS::AccountId}-${AWS::Region}-${CarbonEmissionsDataBucketName}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  CarbonEmissionsDataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CarbonEmissionsDataBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource: "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
 
   # -------------------------------------------------------------------------------------------------------------------
   # Create an S3 bucket to be used as Athena output location, with a retention time of files of 1 day.
@@ -56,6 +84,11 @@ Resources:
 
   AthenaResultBucket:
     Type: AWS::S3::Bucket
+    Metadata:
+      guard:
+        SuppressedRules:
+        - S3_BUCKET_LOGGING_ENABLED
+        - S3_BUCKET_VERSIONING_ENABLED
     Properties:
       BucketName: !Sub "${AWS::AccountId}-${AWS::Region}-athenaresults"
       LifecycleConfiguration:
@@ -63,6 +96,30 @@ Resources:
           - Id: DeleteAfterOneDay
             Status: Enabled
             ExpirationInDays: 1
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  AthenaResultBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AthenaResultBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource: "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
 
   # -------------------------------------------------------------------------------------------------------------------
   # Create an AWS Step Function State Machine and a EventBridge rule to trigger the Step Functions workflow.
@@ -132,6 +189,12 @@ Resources:
 
   GetAccountIDsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+        # Log group data is always encrypted in CloudWatch Logs.
+        # By default, CloudWatch Logs uses server-side encryption for the log data at rest.
+        - CLOUDWATCH_LOG_GROUP_ENCRYPTED
     Properties:
       LogGroupName: !Sub "/aws/lambda/${GetAccountIDsFunction}"
       RetentionInDays: 1
@@ -170,6 +233,12 @@ Resources:
 
   CheckFirstInvocationFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+        # Log group data is always encrypted in CloudWatch Logs.
+        # By default, CloudWatch Logs uses server-side encryption for the log data at rest.
+        - CLOUDWATCH_LOG_GROUP_ENCRYPTED
     Properties:
       LogGroupName: !Sub "/aws/lambda/${CheckFirstInvocationFunction}"
       RetentionInDays: 1
@@ -213,6 +282,10 @@ Resources:
 
   ExtractCarbonEmissionsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+        - CLOUDWATCH_LOG_GROUP_ENCRYPTED
     Properties:
       LogGroupName: !Sub "/aws/lambda/${ExtractCarbonEmissionsFunction}"
       RetentionInDays: 1
