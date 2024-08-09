@@ -1,0 +1,18 @@
+name: CloudFormation Guard Validate
+
+on:
+  pull_request:
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    permissions:
+      # only required when create-review is true (default)
+      pull-requests: write
+    name: CloudFormation Guard validate
+    steps:
+      - name: CloudFormation Guard validate
+        uses: aws-cloudformation/cloudformation-guard@action-v0.0.4
+        with:
+          rules: './cfn-guard-rules/wa-Security-Pillar.guard'
+          data: './MultiAccountApplication/template.yaml'
