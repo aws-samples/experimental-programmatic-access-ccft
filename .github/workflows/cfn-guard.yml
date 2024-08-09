@@ -14,5 +14,5 @@ jobs:
       - name: CloudFormation Guard validate
         uses: aws-cloudformation/cloudformation-guard@action-v0.0.4
         with:
-          rules: './cfn-guard-rules/wa-Security-Pillar.guard'
+          rules: './cfn-guard-rules/'
           data: './MultiAccountApplication/template.yaml'
