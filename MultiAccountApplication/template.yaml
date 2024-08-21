@@ -75,7 +75,9 @@ Resources:
           - Effect: Deny
             Principal: "*"
             Action: "s3:*"
-            Resource: "*"
+            Resource:
+              - !Sub "arn:aws:s3:::${CarbonEmissionsDataBucket}"
+              - !Sub "arn:aws:s3:::${CarbonEmissionsDataBucket}/*"
             Condition:
               Bool:
                 aws:SecureTransport: false
@@ -119,7 +121,9 @@ Resources:
           - Effect: Deny
             Principal: "*"
             Action: "s3:*"
-            Resource: "*"
+            Resource:
+              - !Sub "arn:aws:s3:::${AthenaResultBucket}"
+              - !Sub "arn:aws:s3:::${AthenaResultBucket}/*"
             Condition:
               Bool:
                 aws:SecureTransport: false

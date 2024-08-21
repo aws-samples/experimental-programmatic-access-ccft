@@ -1,8 +1,131 @@
-    ## Config Rule Name : codebuild-project-envvar-awscred-check
-    ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/codebuild-project-envvar-awscred-check.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    CODEBUILD_PROJECT_ENVVAR_AWSCRED_CHECK
+#
+# Description:
+#   Checks whether the project contains environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+#
+# Reports on:
+#    AWS::CodeBuild::Project
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when there are no AWS::CodeBuild::Project resources
+# b) SKIP: when metada has rule suppression for CODEBUILD_PROJECT_ENVVAR_AWSCRED_CHECK
+# c) FAIL: environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are present
+# d) PASS: when environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are not present
 
-    ## Config Rule Name : ecs-task-definition-user-for-host-mode-check
-    ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/ECS_TASK_DEFINITION_USER_FOR_HOST_MODE_CHECK.html"
+#
+# Select all Code Build resources from incoming template (payload)
+#
+let codebuild_project_envvar_awscred_check = Resources.*[ Type == "AWS::CodeBuild::Project"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "CODEBUILD_PROJECT_ENVVAR_AWSCRED_CHECK"
+]
+let disallowed_names = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
+
+rule CODEBUILD_PROJECT_ENVVAR_AWSCRED_CHECK when %codebuild_project_envvar_awscred_check !empty {
+	%codebuild_project_envvar_awscred_check.Properties {
+		Environment !exists OR
+		Environment {
+			EnvironmentVariables !exists OR
+			EnvironmentVariables [
+				Type == "PLAINTEXT"
+			] { 
+				Name NOT IN %disallowed_names
+					<<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-1.9    
+						Violation: AWS CodeBuild Projects are not configured with environment variables that contain credentials in PLAINTEXT 
+						Fix: Remove environment variables that contain credentials in PLAINTEXT ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")
+					>>
+			}
+		}
+	}
+}
+
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#   ECS_TASK_DEFINITION_USER_FOR_HOST_MODE_CHECK
+#
+# Description:
+#  Checks if an Amazon Elastic Container Service (Amazon ECS) task definition with host networking mode has 'privileged' or 'user' container definitions.
+#
+# Reports on:
+#  AWS::ECS::TaskDefinition
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when there are no Autoscaling Group resources present
+# b) SKIP: when metada has rule suppression for ECS_TASK_DEFINITION_USER_FOR_HOST_MODE_CHECK
+# c) SKIP: 'ContainerDefinitions' property is not present
+# d) SKIP: 'NetworkMode' property is either not present or set to a value other than 'host'
+# e) FAIL: Entry in 'ContainerDefinitions' has 'User' not present or set to a root user value and 'Privileged' not present or set to 'false' 
+# f) PASS: All entires in 'ContainerDefinitions' have either 'User' set to a non-root user value or 'Privileged' set to 'true'
+
+#
+# Select all ECS Task Definition Resources from incoming template
+#
+let ecs_task_definition_user_for_host_mode_check_resources = Resources.*[ Type == "AWS::ECS::TaskDefinition"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "ECS_TASK_DEFINITION_USER_FOR_HOST_MODE_CHECK"
+]
+
+rule ECS_TASK_DEFINITION_USER_FOR_HOST_MODE_CHECK when %ecs_task_definition_user_for_host_mode_check_resources !empty {
+    %ecs_task_definition_user_for_host_mode_check_resources[
+        Properties {
+            ContainerDefinitions exists
+            ContainerDefinitions is_list
+            ContainerDefinitions not empty
+
+            NetworkMode exists
+            NetworkMode is_string
+            NetworkMode == "host" 
+        }
+     ] {      
+        Properties.ContainerDefinitions[*] {
+            when User exists
+                 User in [ 0 , "0" , "root" , /^0:.*$/ , /^root:.*$/ ] {
+                    Privileged exists
+                    Privileged == true
+                    <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-2.3,SEC-3.2,SEC-3.4    
+                        Violation: Amazon ECS task definitions using host networking mode must have container definitions that explicitly opt-in to privileged mode, where the container definition user is a root user.
+                        Fix: In 'ContainerDefinitions', where 'User' has been set to a root user value, expliclty opt-in to privileged mode by setting 'Privileged' to 'true'
+                    >>
+            }
+            when User not exists {
+                Privileged exists
+                Privileged == true
+                <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-2.3,SEC-3.2,SEC-3.4    
+                    Violation: Amazon ECS task definitions using host networking mode must have container definitions that explicitly opt-in to privileged mode, where the container definition user is a root user.
+                    Fix: In 'ContainerDefinitions', where 'User' has been set to a root user value, expliclty opt-in to privileged mode by setting 'Privileged' to 'true'
+                >>        
+            }            
+        }       
+    }
+}
 
 #
 #####################################
@@ -38,6 +161,8 @@ let aws_iam_entities_no_inline_policy = Resources.*[
   Type in [ /AWS::IAM::User/,
             /AWS::IAM::Role/,
             /AWS::IAM::Group/ ]
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "F10"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "IAM_NO_INLINE_POLICY_CHECK"
 ]
@@ -75,7 +200,7 @@ rule IAM_NO_INLINE_POLICY_CHECK when %aws_iam_entities_no_inline_policy !empty {
 # a) SKIP: when there are no IAM Policies present
 # b) PASS: when all IAM Policies do not grant permissions to all actions on all resources
 # c) FAIL: when any IAM Policies grant permissions to all actions on all resources
-# d) SKIP: when metada has rule suppression for IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS
+# d) SKIP: when metadata has rule suppression for IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS
 
 #
 # Select all IAM Policy resources from incoming template (payload)
@@ -91,7 +216,7 @@ rule IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS when %aws_iam_policies_no_statem
     some Properties.PolicyDocument.Statement[*] {
       some Action[*] == "*"
       Effect == "Allow"
-      Resource == "*"
+      some Resource in ["*"]
     }
   ]
   %violations empty
@@ -116,7 +241,7 @@ rule IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS when %aws_iam_policies_no_statem
 #   Checks if AWS Identity and Access Management (IAM) policies grant permissions to all actions on individual AWS resources.
 #
 # Reports on:
-#   AWS::IAM::ManagedPolicy
+#   AWS::IAM::Policy
 #
 # Evaluates:
 #   AWS CloudFormation
@@ -124,51 +249,135 @@ rule IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS when %aws_iam_policies_no_statem
 # Rule Parameters:
 #   NA
 #
+# CFN_NAG Rule Id:
+#   F4
+#
 # Scenarios:
-# a) SKIP: when there are no IAM Managed Policies present
-# b) PASS: when all IAM Managed Policies do not allows full access to at least 1 AWS service
-# c) FAIL: when any IAM Managed Policies allows full access to at least 1 AWS service.
-# d) SKIP: when metada has rule suppression for IAM_POLICY_NO_STATEMENTS_WITH_FULL_ACCESS
+# a) SKIP: when there are no IAM Policies present
+# b) PASS: when all IAM Policies do not allow full access to at least 1 AWS service
+# c) FAIL: when any IAM Policy allows full access to at least 1 AWS service.
+# d) SKIP: when metadata has rule suppression for IAM_POLICY_NO_STATEMENTS_WITH_FULL_ACCESS or F4
 
 #
-# Select all IAM Managed Policy resources from incoming template (payload)
+# Select all IAM Policy resources from incoming template (payload)
 # 
-let aws_iam_managed_policies_no_statements_with_full_access = Resources.*[ Type == 'AWS::IAM::ManagedPolicy'
+let aws_iam_policies = Resources.*[ Type == 'AWS::IAM::Policy'
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "F4"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "IAM_POLICY_NO_STATEMENTS_WITH_FULL_ACCESS" 
 ]
 
-rule IAM_POLICY_NO_STATEMENTS_WITH_FULL_ACCESS when %aws_iam_managed_policies_no_statements_with_full_access !empty {
-  let violations = Resources.*[
-    Type == 'AWS::IAM::ManagedPolicy' 
+rule IAM_POLICY_NO_STATEMENTS_WITH_FULL_ACCESS when %aws_iam_policies !empty {
+  let violations = %aws_iam_policies[
+    Type == 'AWS::IAM::Policy'
     some Properties.PolicyDocument.Statement[*] {
       some Action[*] in ["*", /^[a-zA-Z0-9]*:\*$/]
       Effect == "Allow"
-      Resource == "*"
     }
   ]
   %violations empty
   <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-2.3,SEC-3.2,SEC-3.4    
-    Violation: One or more IAM Managed Policies allow full access to at least 1 AWS service
+    Violation: One or more IAM Policies allow full access to at least 1 AWS service
     Fix: Remove policy statements that match {"Effect": "Allow", "Action": "<service-name>:*" ... } or {"Effect": "Allow", "Action": "*" ... }
   >>
 } 
-## Config Rule Name : secretsmanager-rotation-enabled-check
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/secretsmanager-rotation-enabled-check.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    SECRETSMANAGER_ROTATION_ENABLED_CHECK
+#
+# Description:
+#   Checks if AWS Secrets Manager secret has rotation enabled.
+#
+# Reports on:
+#    AWS::SecretsManager::Secret
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when there are no Secrets Manager Secret resources
+# b) PASS: when all Secrets Manager Secrets have an associated RotationPolicy
+# c) FAIL: when any Secrets Manager Secrets is missing an associated RotationPolicy
+# d) SKIP: when metada has rule suppression for SECRETSMANAGER_ROTATION_ENABLED_CHECK
 
-## Config Rule Name : secretsmanager-scheduled-rotation-success-check
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/secretsmanager-scheduled-rotation-success-check.html"
+let aws_secretsmanager_secret_rotate = Resources.*[ Type == "AWS::SecretsManager::Secret"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "SECRETSMANAGER_ROTATION_ENABLED_CHECK"
+]
 
-## Config Rule Name : secretsmanager-secret-periodic-rotation
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/secretsmanager-secret-periodic-rotation.html"
+let aws_secretsmanager_rotation_schedule_rotate = Resources.*[ Type == "AWS::SecretsManager::RotationSchedule" ]
 
-## Config Rule Name : secretsmanager-secret-unused
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/secretsmanager-secret-unused.html"
+rule SECRETSMANAGER_ROTATION_ENABLED_CHECK when %aws_secretsmanager_secret_rotate !empty {
+	%aws_secretsmanager_rotation_schedule_rotate !empty
+	let secret_names = %aws_secretsmanager_rotation_schedule_rotate.Properties.SecretId.Ref
+	let referenced_secrets = Resources[keys in %secret_names]
+	%aws_secretsmanager_secret_rotate in %referenced_secrets
+	<<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-2.4    
+		Violation: Secret Manager Secret should be assocaited with a rotation schedule
+		Fix: Reference the Secret Manager Secret resource ID in a AWS::SecretsManager::RotationSchedule resource
+  >>
+}
 
-## Config Rule Name : secretsmanager-using-cmk
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/secretsmanager-using-cmk.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    SECRETSMANAGER_USING_CMK
+#
+# Description:
+#   Checks if all secrets in AWS Secrets Manager are encrypted using a customer managed key that was created in AWS Key Management Service (AWS KMS).
+#
+# Reports on:
+#    AWS::SecretsManager::Secret
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when there are no Secrets Manager Secret resources
+# b) PASS: when all Secrets Manager Secrets have an associated customer managed CMK
+# c) FAIL: when any Secrets Manager Secrets is missing an associated customer managed CMK
+# d) SKIP: when metada has rule suppression for SECRETSMANAGER_USING_CMK
+
+#
+# Select all AWS::SageMaker::EndpointConfig resources from incoming template (payload)
+#
+let aws_secretsmanager_secret_cmk = Resources.*[ Type == "AWS::SecretsManager::Secret"
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W77"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "SECRETSMANAGER_USING_CMK"
+]
+
+
+
+rule SECRETSMANAGER_USING_CMK when %aws_secretsmanager_secret_cmk !empty {
+  %aws_secretsmanager_secret_cmk.Properties.KmsKeyId exists
+  %aws_secretsmanager_secret_cmk.Properties.KmsKeyId not in ["alias/aws/secretsmanager"]
+  <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-2.4,SEC-8.3    
+    Violation: AWS Secrets Manager secrets are encrypted using an AWS KMS customer managed key
+    Fix: Set the KmsKeyId property
+  >>
+}
 
 #
 #####################################
@@ -213,8 +422,52 @@ rule EC2_INSTANCE_PROFILE_ATTACHED when %ec2_instances_profile_attached !empty {
   >>
 }
 
-    ## Config Rule Name : emr-kerberos-enabled
-    ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/EMR_KERBEROS_ENABLED.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    EMR_KERBEROS_ENABLED
+#
+# Description:
+#   Checks if Kerberos is set for EMR cluster.
+#
+# Reports on:
+#    AWS::EMR::Cluster
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when EMR cluster resource not present
+# b) SKIP: when metada has rule suppression for EMR_KERBEROS_ENABLED
+# c) FAIL: when all EMR cluster resources KerberosAttributes property does not exist
+# d) PASS: when all EMR cluster resources KerberosAttributes property is set
+
+#
+# Select all EMR Cluster resources from incoming template (payload)
+#
+
+let emr_kerberos_enabled = Resources.*[ Type == "AWS::EMR::Cluster"
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "F63"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "EMR_KERBEROS_ENABLED"
+]
+
+rule EMR_KERBEROS_ENABLED when %emr_kerberos_enabled !empty {
+	%emr_kerberos_enabled.Properties.KerberosAttributes exists
+	<<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-3.2,SEC-3.4    
+		Violation: EMR Clusters have Kerberos configured
+		Fix: Set the KerberosAttributes property
+	>>
+}
 
 #
 #####################################
@@ -239,14 +492,16 @@ rule EC2_INSTANCE_PROFILE_ATTACHED when %ec2_instances_profile_attached !empty {
 # a) SKIP: when there is no DMS Replication Instance present
 # b) FAIL: When DMS Replication Instance is present and PubliclyAccessible property is set to true
 # c) PASS: When DMS Replication Instance is present and PubliclyAccessible property is set to false
-# c) PASS: When DMS Replication Instance is present and PubliclyAccessible property is not set
-# d) SKIP: when metada has rule suppression for DMS_REPLICATION_NOT_PUBLIC
+# c) FAIL: When DMS Replication Instance is present and PubliclyAccessible property is not set
+# d) SKIP: when metadata has rule suppression for DMS_REPLICATION_NOT_PUBLIC or cfn_nag W91
 
 #
-# Select all Redshift cluster resources from incoming template
+# Select all DMS ReplicationInstance resources from incoming template
 #
 
 let dms_replication_instances = Resources.*[ Type == 'AWS::DMS::ReplicationInstance'
+  Metadata.cfn_nag.rules_to_suppress not exists or
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W91"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "DMS_REPLICATION_NOT_PUBLIC"
 ]
@@ -258,9 +513,10 @@ rule DMS_REPLICATION_NOT_PUBLIC when %dms_replication_instances !empty {
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-3.7,SEC-5.3    
     Violation: AWS Database Migration Service replication instances should not be public.
-    Fix: Set the DMS Replication Instance property PubliclyAccessible parameter to true.
+    Fix: Set the DMS Replication Instance property PubliclyAccessible parameter to false.
   >>
 }
+
 #
 #####################################
 ##           Gherkin               ##
@@ -315,42 +571,44 @@ rule EC2_INSTANCE_NO_PUBLIC_IP when %ec2_instances_no_public_ip !empty {
 ##           Gherkin               ##
 #####################################
 # Rule Identifier:
-#    ELASTICSEARCH_IN_VPC_ONLY
+#   ELASTICSEARCH_IN_VPC_ONLY
 #
 # Description:
 #   Elasticsearch domains must be in a VPC
 #
 # Reports on:
-#    AWS::Elasticsearch::Domain
+#   AWS::Elasticsearch::Domain
 #
 # Evaluates:
-#    AWS CloudFormation
+#   AWS CloudFormation
 #
 # Rule Parameters:
-#    NA
+#   NA
 #
 # Scenarios:
 # a) SKIP: when there is no elasticsearch domain present
-# b) FAIL: when elasticsearch domain does not have VPCOptions or Endpoint properties
+# b) SKIP: when metada has rule suppression for ELASTICSEARCH_IN_VPC_ONLY
 # c) PASS: when elasticsearch domain has VPCOptions or Endpoint properties
-# d) SKIP: when metada has rule suppression for ELASTICSEARCH_IN_VPC_ONLY
+# d) FAIL: when elasticsearch domain does not have VPCOptions or Endpoint properties
 
 #
 # Select all elasticsearch domains from incoming template
 #
-let elasticsearch_domains_vpc_required = Resources.*[ Type == 'AWS::Elasticsearch::Domain'
+let elasticsearch_domains_vpc_required = Resources.*[ Type == "AWS::Elasticsearch::Domain"
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W90"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "ELASTICSEARCH_IN_VPC_ONLY"
 ]
 
 rule ELASTICSEARCH_IN_VPC_ONLY when %elasticsearch_domains_vpc_required !empty {
-  %elasticsearch_domains_vpc_required.Properties.VPCOptions EXISTS
-  <<
+    %elasticsearch_domains_vpc_required.Properties.VPCOptions EXISTS
+        <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-3.7,SEC-5.2,SEC-5.3    
-    Violation: Elasticsearch domains must be in a VPC.
-    Fix: Provide VPCOptions object to enable opensearch to function in a VPC.
-  >>
+            Violation: Elasticsearch domains must be in a VPC.
+            Fix: Provide VPCOptions object to enable opensearch to function in a VPC.
+        >>
 }
 ## Config Rule Name : emr-master-no-public-ip
 ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/emr-master-no-public-ip.html"
@@ -439,7 +697,7 @@ rule LAMBDA_FUNCTION_PUBLIC_ACCESS_PROHIBITED when %aws_lambda_permissions_publi
   %aws_lambda_permissions_public_access_prohibited {
     Type == 'AWS::Lambda::Permission'
     Properties {
-      Principal in [ /^\d{12}$/, "AWS::AccountId" ]
+      Principal in [ /^\d{12}$/, {"Ref":"AWS::AccountId"} ]
       OR Principal > 0
     }
   }
@@ -485,7 +743,7 @@ rule LAMBDA_FUNCTION_PUBLIC_ACCESS_PROHIBITED when %aws_lambda_permissions_publi
     Type == 'AWS::Lambda::LayerVersionPermission'
     Properties {
       OrganizationId !empty
-      OR Principal in [ /^\d{12}$/, "AWS::AccountId" ]
+      OR Principal in [ /^\d{12}$/, {"Ref":"AWS::AccountId"} ]
       OR Principal > 0
       <<
     Guard Rule Set: wa-Security-Pillar
@@ -527,6 +785,8 @@ rule LAMBDA_FUNCTION_PUBLIC_ACCESS_PROHIBITED when %aws_lambda_permissions_publi
 # Select all AWS Lambda Function resources from incoming template (payload)
 #
 let aws_lambda_functions_inside_vpc = Resources.*[ Type == 'AWS::Lambda::Function' 
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W89"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "LAMBDA_INSIDE_VPC"
 ]
@@ -572,6 +832,8 @@ rule  LAMBDA_INSIDE_VPC when %aws_lambda_functions_inside_vpc !empty {
 # Select all RDS instance resources from incoming template (payload)
 #
 let aws_rds_instances_not_public = Resources.*[ Type == 'AWS::RDS::DBInstance'
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "F22"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "RDS_INSTANCE_PUBLIC_ACCESS_CHECK"
 ]
@@ -582,8 +844,8 @@ rule RDS_INSTANCE_PUBLIC_ACCESS_CHECK when %aws_rds_instances_not_public !empty 
   <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-3.7,SEC-5.3    
-    Violation: All RDS instances must not be publicly accessible.
-    Fix: Set the PubliclyAccessible to false.
+    Violation: All RDS instances must not be publicly accessible. 
+    Fix: The default depends on the VPC configuration, so it is recommended to eplicitly set PubliclyAccessible to false.
   >>
 }
 
@@ -775,8 +1037,51 @@ rule S3_BUCKET_PUBLIC_WRITE_PROHIBITED when %s3_buckets_public_write_prohibited 
     Fix: Set S3 Bucket PublicAccessBlockConfiguration properties for BlockPublicAcls, BlockPublicPolicy, IgnorePublicAcls, RestrictPublicBuckets parameters to true.
   >>
 }
-## Config Rule Name : sagemaker-notebook-no-direct-internet-access
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/sagemaker-notebook-no-direct-internet-access.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    SAGEMAKER_NOTEBOOK_NO_DIRECT_INTERNET_ACCESS
+#
+# Description:
+#   Checks whether AWS Key Management Service (KMS) key is configured for an Amazon SageMaker endpoint configuration.
+#
+# Reports on:
+#    AWS::SageMaker::NotebookInstance
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when Sagemaker Notebook Instance resource not present
+# b) PASS: when all Sagemaker Notebook Instance resources KmsKeyId property is set
+# c) FAIL: when all Sagemaker Notebook Instance resources KmsKeyId property does not exist
+# d) SKIP: when metada has rule suppression for SAGEMAKER_NOTEBOOK_NO_DIRECT_INTERNET_ACCESS
+
+#
+# Select all AWS::SageMaker::NotebookInstance resources from incoming template (payload)
+#
+
+let sagemaker_notebookinstances_directaccess = Resources.*[ Type == "AWS::SageMaker::NotebookInstance"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "SAGEMAKER_NOTEBOOK_NO_DIRECT_INTERNET_ACCESS"
+]
+
+rule SAGEMAKER_NOTEBOOK_NO_DIRECT_INTERNET_ACCESS when %sagemaker_notebookinstances_directaccess !empty {
+	%sagemaker_notebookinstances_directaccess.Properties.DirectInternetAccess exists
+	%sagemaker_notebookinstances_directaccess.Properties.DirectInternetAccess == "Disabled"
+	<<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-3.7,SEC-5.3    
+		Violation: Amazon SageMaker Notebook instance should not have direct internet access
+		Fix: Set the property DirectInternetAccess to "Disabled" and provide a value for SubnetId property
+	>>
+}
 
 #
 #####################################
@@ -807,6 +1112,8 @@ rule S3_BUCKET_PUBLIC_WRITE_PROHIBITED when %s3_buckets_public_write_prohibited 
 # Select all EC2 Subnet resources from incoming template (payload)
 #
 let ec2_subnets_auto_assign_public_ip_disabled = Resources.*[ Type == 'AWS::EC2::Subnet' 
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W33"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "SUBNET_AUTO_ASSIGN_PUBLIC_IP_DISABLED"
 ]
@@ -821,8 +1128,53 @@ rule SUBNET_AUTO_ASSIGN_PUBLIC_IP_DISABLED when %ec2_subnets_auto_assign_public_
     Fix: remove the MapPublicIpOnLaucnh property or set it to false
 	>>
 }
-    ## Config Rule Name : autoscaling-launch-config-public-ip-disabled
-    ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/AUTOSCALING_LAUNCH_CONFIG_PUBLIC_IP_DISABLED.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    AUTOSCALING_LAUNCH_CONFIG_PUBLIC_IP_DISABLED
+#
+# Description:
+#   Checks that Amazon EC2 Auto Scaling launch configurations are configured to not associate public IP addresses
+#
+# Reports on:
+#    AWS::AutoScaling::LaunchConfiguration
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when there are no AutoScaling::LaunchConfiguration resource present
+# b) SKIP: when metada has rule suppression for AUTOSCALING_LAUNCH_CONFIG_PUBLIC_IP_DISABLED
+# c) FAIL: when all AutoScaling::LaunchConfiguration resources AssociatePublicIpAddress property does not exist
+# d) FAIL: when all AutoScaling::LaunchConfiguration resources have AssociatePublicIpAddress set to true
+# e) PASS: when all AutoScaling::LaunchConfiguration resources AssociatePublicIpAddress property is set to false
+
+#
+# Select all AutoScaling Launch Configuration resources from incoming template (payload)
+#
+let autoscaling_launch_config_public_ip_disabled = Resources.*[ Type == "AWS::AutoScaling::LaunchConfiguration"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "AUTOSCALING_LAUNCH_CONFIG_PUBLIC_IP_DISABLED"
+]
+
+rule AUTOSCALING_LAUNCH_CONFIG_PUBLIC_IP_DISABLED when %autoscaling_launch_config_public_ip_disabled !empty {
+    %autoscaling_launch_config_public_ip_disabled.Properties {
+        AssociatePublicIpAddress exists
+        AssociatePublicIpAddress == false
+        <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-3.7,SEC-5.3    
+            Violation: Amazon EC2 Auto Scaling launch configurations are configured to not associate public IP addresses
+            Fix: Explicitly set the AssociatePublicIpAddress attribute to false.
+        >>
+    }
+}
 
 #
 #####################################
@@ -982,6 +1334,8 @@ rule CLOUDTRAIL_S3_DATAEVENTS_ENABLED when %cloudtrail_trails_dataevents !empty 
 # Select all cloudwatch logs log group resources from incoming template (payload)
 #
 let cloudwatch_logs_retention_period = Resources.*[ Type == 'AWS::Logs::LogGroup'
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W86"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "CW_LOGGROUP_RETENTION_PERIOD_CHECK"
 ]
@@ -1000,51 +1354,99 @@ rule CW_LOGGROUP_RETENTION_PERIOD_CHECK when %cloudwatch_logs_retention_period !
 ##           Gherkin               ##
 #####################################
 # Rule Identifier:
-#    ELASTICSEARCH_LOGS_TO_CLOUDWATCH
+#  ELASTICSEARCH_LOGS_TO_CLOUDWATCH
 #
 # Description:
 #   Checks if Amazon OpenSearch Service (OpenSearch Service) domains are
 #   configured to send logs to Amazon CloudWatch Logs.
 #
 # Reports on:
-#    AWS::Elasticsearch::Domain
+#   AWS::Elasticsearch::Domain
 #
 # Evaluates:
-#    AWS CloudFormation
+#   AWS CloudFormation
 #
 # Rule Parameters:
-#    NA
+#   NA
 #
 # Scenarios:
 # a) SKIP: when there is no elasticsearch domain present
-# b) FAIL: when elasticsearch domain does not have LogPublishingOptions or Enabled parameter is set to false for all available keys
-# c) PASS: when elasticsearch domain has LogPublishingOptions with Enabled parameter is set to true on one key
-# d) SKIP: when metada has rule suppression for ELASTICSEARCH_LOGS_TO_CLOUDWATCH
+# b) SKIP: when metadata has rule suppression for ELASTICSEARCH_LOGS_TO_CLOUDWATCH
+# c) FAIL: when Elasticsearch domain does not have LogPublishingOptions or Enabled parameter is set to false for all available keys
+# d) PASS: when Elasticsearch domain has LogPublishingOptions with Enabled parameter is set to true on one key
 
 #
-# Select all elasticsearch domains from incoming template
+# Select all Elasticsearch domains from incoming template
 #
-
-let elasticsearch_domains_logs_cloudwatch = Resources.*[ Type == 'AWS::Elasticsearch::Domain'
+let elasticsearch_domains_logs_cloudwatch = Resources.*[ Type == "AWS::Elasticsearch::Domain"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "ELASTICSEARCH_LOGS_TO_CLOUDWATCH"
 ]
 
 rule ELASTICSEARCH_LOGS_TO_CLOUDWATCH when %elasticsearch_domains_logs_cloudwatch !empty {
 
-  %elasticsearch_domains_logs_cloudwatch.Properties.LogPublishingOptions EXISTS
-  %elasticsearch_domains_logs_cloudwatch.Properties.LogPublishingOptions.ES_APPLICATION_LOGS.Enabled == true OR
-  %elasticsearch_domains_logs_cloudwatch.Properties.LogPublishingOptions.SEARCH_SLOW_LOGS.Enabled == true OR
-  %elasticsearch_domains_logs_cloudwatch.Properties.LogPublishingOptions.INDEX_SLOW_LOGS.Enabled == true
-  <<
+    %elasticsearch_domains_logs_cloudwatch.Properties.LogPublishingOptions EXISTS
+    %elasticsearch_domains_logs_cloudwatch.Properties.LogPublishingOptions.ES_APPLICATION_LOGS.Enabled == true OR
+    %elasticsearch_domains_logs_cloudwatch.Properties.LogPublishingOptions.SEARCH_SLOW_LOGS.Enabled == true OR
+    %elasticsearch_domains_logs_cloudwatch.Properties.LogPublishingOptions.INDEX_SLOW_LOGS.Enabled == true
+        <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-4.2    
-    Violation: Elasticsearch domain must have logging configured to send logs to CloudWatch Logs.
-    Fix: Set a LogPublishingOptions object to have the property "Enabled" parameter set to true for keys "ES_APPLICATION_LOGS", "SEARCH_SLOW_LOGS", or "INDEX_SLOW_LOGS".
-  >>
+            Violation: Elasticsearch domain must have logging configured to send logs to CloudWatch Logs.
+            Fix: Set a LogPublishingOptions object to have the property "Enabled" parameter set to true for keys "ES_APPLICATION_LOGS", "SEARCH_SLOW_LOGS", or "INDEX_SLOW_LOGS".
+        >>
 }
-## Config Rule Name : elb-logging-enabled
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/elb-logging-enabled.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#   ELB_LOGGING_ENABLED
+#
+# Description:
+#   This rule checks whether Classic Load Balancers have logging enabled.
+#
+# Reports on:
+#   AWS::ElasticLoadBalancing::LoadBalancer
+#
+# Evaluates:
+#   AWS CloudFormation
+#
+# Rule Parameters:
+#   None
+#
+# Scenarios:
+# a) SKIP: when there are no Elastic Load Balancing Resources
+# b) SKIP: when metadata has rule suppression for ELB_LOGGING_ENABLED
+# c) FAIL: when 'AccessLoggingPolicy' has not been specified
+# d) FAIL: when 'AccessLoggingPolicy' has been specified and 'Enabled' in 'AccessLoggingPolicy' has been set to false
+# e) PASS: when 'AccessLoggingPolicy' has been specified and 'Enabled' in 'AccessLoggingPolicy' has been set to true
+
+#
+# Select all Elastic Load Balancing Resources from incoming template (payload)
+#
+let elb_logging_enabled_resources = Resources.*[ Type == 'AWS::ElasticLoadBalancing::LoadBalancer'
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W26"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "ELB_LOGGING_ENABLED"
+]
+
+rule ELB_LOGGING_ENABLED when %elb_logging_enabled_resources !empty {
+    %elb_logging_enabled_resources.Properties {
+        AccessLoggingPolicy exists
+        AccessLoggingPolicy {
+            Enabled == true
+            <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-4.2    
+                Violation: This rule checks whether Classic Load Balancers have logging enabled.
+                Fix: Set the Classic Load Balancer 'AccessLoggingPolicy.Enabled' property to true and 'S3BucketName' to an S3 bucket you own that has been configured to receive ELB logs.
+            >>
+        }
+    }
+}
 
 #
 #####################################
@@ -1124,6 +1526,8 @@ rule RDS_INSTANCE_LOGGING_ENABLED when %aws_rds_instances_logging_enabled !empty
 #
 
 let s3_buckets_bucket_logging_enabled = Resources.*[ Type == 'AWS::S3::Bucket'
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W35"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "S3_BUCKET_LOGGING_ENABLED"
 ]
@@ -1158,6 +1562,9 @@ rule S3_BUCKET_LOGGING_ENABLED when %s3_buckets_bucket_logging_enabled  !empty {
 # Rule Parameters:
 #    NA
 #
+# CFN_NAG Rule Id:
+#   F28
+#
 # Scenarios:
 # a) SKIP: when there are no Redshift Cluster resource present
 # b) PASS: when Redshift Cluster resources have the Encrypted property set to true
@@ -1169,6 +1576,8 @@ rule S3_BUCKET_LOGGING_ENABLED when %s3_buckets_bucket_logging_enabled  !empty {
 # Select all Redshift Cluster resources from incoming template (payload)
 #
 let redhshift_clusters_configuration_check = Resources.*[ Type == 'AWS::Redshift::Cluster' 
+    Metadata.cfn_nag.rules_to_suppress not exists or 
+    Metadata.cfn_nag.rules_to_suppress.*.id != "F28"
 	Metadata.guard.SuppressedRules not exists or
     Metadata.guard.SuppressedRules.* != "REDSHIFT_CLUSTER_CONFIGURATION_CHECK"
 ]
@@ -1277,9 +1686,6 @@ rule REDSHIFT_ENHANCED_VPC_ROUTING_ENABLED when %redhshift_enhanced_vpc_routing_
 }
 ## Config Rule Name : alb-waf-enabled
 ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/alb-waf-enabled.html"
-
-    ## Config Rule Name : api-gw-associated-with-waf
-    ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/API_GW_ASSOCIATED_WITH_WAF.html"
 
 #
 #####################################
@@ -1416,7 +1822,7 @@ let aws_security_groups_restricted_incoming_traffic = Resources.*[ Type == 'AWS:
 ]
 
 rule RESTRICTED_INCOMING_TRAFFIC when %aws_security_groups_restricted_incoming_traffic !empty {
-	let violations = Resources.*[
+	let violations = %aws_security_groups_restricted_incoming_traffic[
 		Type == 'AWS::EC2::SecurityGroup'
 		some Properties.SecurityGroupIngress[*] {
 			FromPort in [ 20, 21, 3389, 3306, 4333 ]
@@ -1654,6 +2060,8 @@ rule CLOUD_TRAIL_ENCRYPTION_ENABLED when %cloudtrail_trails_encryption !empty {
 # Select all cloudwatch logs log group resources from incoming template (payload)
 #
 let cloudwatch_logs = Resources.*[ Type == 'AWS::Logs::LogGroup'
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W84"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "CLOUDWATCH_LOG_GROUP_ENCRYPTED"
 ]
@@ -1668,20 +2076,19 @@ rule CLOUDWATCH_LOG_GROUP_ENCRYPTED when %cloudwatch_logs !empty {
   >>
 }
 
-## Config Rule Name : dynamodb-table-encrypted-kms
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/dynamodb-table-encrypted-kms.html"
-
 #
 #####################################
 ##           Gherkin               ##
 #####################################
+#
 # Rule Identifier:
-#    EC2_EBS_ENCRYPTION_BY_DEFAULT
+#    DYNAMODB_TABLE_ENCRYPTED_KMS
 #
 # Description:
-#    Check that Amazon Elastic Block Store (EBS) encryption is enabled by default
+#   Checks if Amazon DynamoDB table is encrypted with AWS Key Management Service (KMS).
+#
 # Reports on:
-#    AWS::EC2::Volume
+#    AWS::DynamoDB::Table
 #
 # Evaluates:
 #    AWS CloudFormation
@@ -1690,28 +2097,33 @@ rule CLOUDWATCH_LOG_GROUP_ENCRYPTED when %cloudwatch_logs !empty {
 #    NA
 #
 # Scenarios:
-# a) SKIP: when no EC2 Volume resources are present
-# b) PASS: when all EC2 Volume resources have the Encrypted property set to true
-# c) FAIL: when any EC2 Volumes resources do not have the Encrypted property set to true
-# e) SKIP: when metadata includes the suppression for rule EC2_EBS_ENCRYPTION_BY_DEFAULT
+# a) SKIP: when there are no DynamoDB Tables present
+# b) SKIP: when metadata has rule suppression for DYNAMODB_TABLE_ENCRYPTED_KMS
+# c) FAIL: when all DynamoDB Tables are not are encrypted with KMS
+# d) PASS: when all DynamoDB Tables are encrypted with KMS
 
-#
-# Select all EC2 Volume resources from incoming template (payload)
-#
-let ec2_ebs_volumes_encrypted_by_default = Resources.*[ Type == 'AWS::EC2::Volume' 
+let dynamodb_table_encrypted_kms = Resources.*[ Type == "AWS::DynamoDB::Table"
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W74"
   Metadata.guard.SuppressedRules not exists or
-  Metadata.guard.SuppressedRules.* != "EC2_EBS_ENCRYPTION_BY_DEFAULT"
+  Metadata.guard.SuppressedRules.* != "DYNAMODB_TABLE_ENCRYPTED_KMS"
 ]
 
-rule EC2_EBS_ENCRYPTION_BY_DEFAULT when %ec2_ebs_volumes_encrypted_by_default !empty {
-    %ec2_ebs_volumes_encrypted_by_default.Properties.Encrypted == true 
-		<<
+let DYNAMODB_TABLE_ENCRYPTED_KMS_ALLOWED_ALGORITHMS = [ "KMS" ]
+
+rule DYNAMODB_TABLE_ENCRYPTED_KMS when %dynamodb_table_encrypted_kms !empty {
+  %dynamodb_table_encrypted_kms.Properties.SSESpecification exists
+  %dynamodb_table_encrypted_kms.Properties.SSESpecification.SSEEnabled == true
+  %dynamodb_table_encrypted_kms.Properties.SSESpecification.KMSMasterKeyId exists
+  %dynamodb_table_encrypted_kms.Properties.SSESpecification.SSEType in %DYNAMODB_TABLE_ENCRYPTED_KMS_ALLOWED_ALGORITHMS
+      <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-8.3    
-			Violation: All EBS Volumes should be encryped 
-			Fix: Set Encrypted property to true
-		>>
+        Violation: Amazon DynamoDB tables are configured with SSE and a KMS key
+        Fix: In SSESpecification, set SSEEnabled to true and set KMSMasterKeyId to the ID of a KMS key
+      >>
 }
+
 #
 #####################################
 ##           Gherkin               ##
@@ -1744,6 +2156,8 @@ rule EC2_EBS_ENCRYPTION_BY_DEFAULT when %ec2_ebs_volumes_encrypted_by_default !e
 # Select all EFS resources from incoming template (payload)
 #
 let efs_file_systems_encrypted_check = Resources.*[ Type == 'AWS::EFS::FileSystem'
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "F32"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "EFS_ENCRYPTED_CHECK"
 ]
@@ -1762,43 +2176,45 @@ rule EFS_ENCRYPTED_CHECK when %efs_file_systems_encrypted_check !empty {
 ##           Gherkin               ##
 #####################################
 # Rule Identifier:
-#    ELASTICSEARCH_ENCRYPTED_AT_REST
+#   ELASTICSEARCH_ENCRYPTED_AT_REST
 #
 # Description:
 #   Elasticsearch domains must enforce server side encryption
 #
 # Reports on:
-#    AWS::Elasticsearch::Domain
+#   AWS::Elasticsearch::Domain
 #
 # Evaluates:
-#    AWS CloudFormation
+#   AWS CloudFormation
 #
 # Rule Parameters:
-#    NA
+#   NA
 #
 # Scenarios:
-# a) SKIP: when there is no elasticsearch domain present
-# b) FAIL: when elasticsearch domain has server side encryption set to false
-# c) PASS: when elasticsearch domain has server side encryption set to true
-# d) FAIL: when elasticsearch domain has server side encryption property is missing
-# e) SKIP: when metada has rule suppression for ELASTICSEARCH_ENCRYPTED_AT_REST
+# a) SKIP: when there is no Elasticsearch domain present
+# b) SKIP: when metada has rule suppression for ELASTICSEARCH_ENCRYPTED_AT_REST
+# c) FAIL: when Elasticsearch domain has server side encryption property is missing
+# d) FAIL: when Elasticsearch domain has server side encryption set to false
+# e) PASS: when Elasticsearch domain has server side encryption set to true
 
 #
 # Select all elasticsearch domains from incoming template
 #
-let elasticsearch_domains_encrypted = Resources.*[ Type == 'AWS::Elasticsearch::Domain'
+let elasticsearch_domains_encrypted = Resources.*[ Type == "AWS::Elasticsearch::Domain"
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W54"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "ELASTICSEARCH_ENCRYPTED_AT_REST"
 ]
 
 rule ELASTICSEARCH_ENCRYPTED_AT_REST when %elasticsearch_domains_encrypted !empty {
-  %elasticsearch_domains_encrypted.Properties.EncryptionAtRestOptions.Enabled == true
-  <<
+    %elasticsearch_domains_encrypted.Properties.EncryptionAtRestOptions.Enabled == true
+        <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-8.3    
-    Violation: Elasticsearch domains must enforce server side encryption.
-    Fix: Set the EncryptionAtRestOptions.Enabled parameter to true.
-  >>
+            Violation: Elasticsearch domains must enforce server side encryption.
+            Fix: Set the EncryptionAtRestOptions.Enabled parameter to true.
+        >>
 }
 #
 #####################################
@@ -1819,6 +2235,9 @@ rule ELASTICSEARCH_ENCRYPTED_AT_REST when %elasticsearch_domains_encrypted !empt
 # Rule Parameters:
 #    NA
 #
+# CFN_NAG Rule Id:
+#   F1
+#
 # Scenarios:
 # a) SKIP: when there are no EBS volume resources present
 # b) PASS: when all EBS volumes have the KmsKeyId property set or the Encrypted property set to true 
@@ -1829,68 +2248,27 @@ rule ELASTICSEARCH_ENCRYPTED_AT_REST when %elasticsearch_domains_encrypted !empt
 # Select all EC2 Instance resources from incoming template (payload)
 #
 let ebs_volumes_encrypted = Resources.*[ Type == 'AWS::EC2::Volume' 
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "F1"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "ENCRYPTED_VOLUMES"
 ]
 
 rule ENCRYPTED_VOLUMES when %ebs_volumes_encrypted !empty {
-  %ebs_volumes_encrypted.Properties.KmsKeyId !empty
-	OR %ebs_volumes_encrypted.Properties.Encrypted == true
+  let violations = %ebs_volumes_encrypted[
+    Properties.KmsKeyId empty
+    Properties.Encrypted !exists
+    or Properties.Encrypted != true
+  ]
+  %violations empty
   <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-8.3    
-    Violation: EBS volumes in an attached state must encrypted.
-    Fix: either set the KmsKeyId property to a key ID, key alias, key ARN, or alias ARN 
+    Violation: EBS volumes in an attached state must be encrypted.
+    Fix: Set the KmsKeyId property to a key ID, key alias, key ARN, or alias ARN 
 		or set the Encrypted property to true to encrypt the volume with the account default key or AWS managed key. 
   >>
 }
-#
-#####################################
-##           Gherkin               ##
-#####################################
-# Rule Identifier:
-#    RDS_SNAPSHOT_ENCRYPTED
-#
-# Description:
-#    Checks whether Amazon Relational Database Service (Amazon RDS) DB snapshots are encrypted.
-#
-#
-# Reports on:
-#    AWS::RDS::DBInstance
-#
-# Evaluates:
-#    AWS CloudFormation
-#
-# Rule Parameters:
-#    NA
-#
-# Scenarios:
-# a) SKIP: when there are no RDS instances present
-# b) PASS: when all RDS instances have StorageEncrypted set to true
-# c) FAIL: when all RDS instances have StorageEncrypted set to false
-# d) FAIL: when there are RDS instances with StorageEncrypted property is not present
-# e) SKIP: when metadata includes the suppression for rule RDS_SNAPSHOT_ENCRYPTED
-
-#
-# Select all RDS instance resources from incoming template (payload)
-#
-let aws_rds_instances_snapshot_encrypted = Resources.*[ Type == 'AWS::RDS::DBInstance'
-  Metadata.guard.SuppressedRules not exists or
-  Metadata.guard.SuppressedRules.* != "RDS_SNAPSHOT_ENCRYPTED"
-]
-
-
-rule RDS_SNAPSHOT_ENCRYPTED when %aws_rds_instances_snapshot_encrypted !empty {
-  %aws_rds_instances_snapshot_encrypted.Properties.StorageEncrypted EXISTS
-  %aws_rds_instances_snapshot_encrypted.Properties.StorageEncrypted == true
-  <<
-    Guard Rule Set: wa-Security-Pillar
-    Controls: SEC-8.3    
-    Violation: All RDS instances must have snapshots encrypted.
-    Fix: Set the StorageEncrypted parameter to true so by default all snapshots are encrypted.
-  >>
-}
-
 #
 #####################################
 ##           Gherkin               ##
@@ -1904,6 +2282,7 @@ rule RDS_SNAPSHOT_ENCRYPTED when %aws_rds_instances_snapshot_encrypted !empty {
 #
 # Reports on:
 #    AWS::RDS::DBInstance
+#    AWS::RDS::DBCluster
 #
 # Evaluates:
 #    AWS CloudFormation
@@ -1911,25 +2290,34 @@ rule RDS_SNAPSHOT_ENCRYPTED when %aws_rds_instances_snapshot_encrypted !empty {
 # Rule Parameters:
 #    NA
 #
+# CFN_NAG Rule Id:
+#   F26, F27
+#
 # Scenarios:
 # a) SKIP: when there are no RDS instances present
-# b) PASS: when all RDS instances have StorageEncrypted set to true
-# c) FAIL: when all RDS instances have StorageEncrypted set to false
-# d) FAIL: when there are RDS instances with StorageEncrypted property is not present
+# b) PASS: when all RDS instances / clusters have StorageEncrypted set to true
+# c) FAIL: when any RDS instances / clusters have StorageEncrypted set to false
+# d) FAIL: when there are RDS instances / clusters with StorageEncrypted property is not present
 # e) SKIP: when metadata includes the suppression for rule RDS_STORAGE_ENCRYPTED
 
 #
 # Select all RDS instance resources from incoming template (payload)
 #
-let aws_rds_instances_storage_encrypted = Resources.*[ Type == 'AWS::RDS::DBInstance'
+let aws_rds_instances_storage_encrypted = Resources.*[ Type in [ /AWS::RDS::DBInstance/, /AWS::RDS::DBCluster/ ]
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id !in [ "F26", "F27" ]
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "RDS_STORAGE_ENCRYPTED"
 ]
 
 
 rule RDS_STORAGE_ENCRYPTED when %aws_rds_instances_storage_encrypted !empty {
-  %aws_rds_instances_storage_encrypted.Properties.StorageEncrypted EXISTS
-  %aws_rds_instances_storage_encrypted.Properties.StorageEncrypted == true
+  let violations = %aws_rds_instances_storage_encrypted[
+    Properties.StorageEncrypted !EXISTS
+    or
+    Properties.StorageEncrypted != true
+  ]
+  %violations empty
   <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-8.3    
@@ -1969,6 +2357,8 @@ rule RDS_STORAGE_ENCRYPTED when %aws_rds_instances_storage_encrypted !empty {
 #
 
 let s3_buckets_server_side_encryption = Resources.*[ Type == 'AWS::S3::Bucket'
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W41"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "S3_BUCKET_SERVER_SIDE_ENCRYPTION_ENABLED"
 ]
@@ -2029,14 +2419,146 @@ rule S3_DEFAULT_ENCRYPTION_KMS when %s3_buckets_s3_default_encryption !empty {
   >>
 }
 
-## Config Rule Name : sagemaker-endpoint-configuration-kms-key-configured
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/sagemaker-endpoint-configuration-kms-key-configured.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    SAGEMAKER_ENDPOINT_CONFIGURATION_KMS_KEY_CONFIGURED
+#
+# Description:
+#   Checks whether AWS Key Management Service (KMS) key is configured for an Amazon SageMaker endpoint configuration.
+#
+# Reports on:
+#    AWS::SageMaker::EndpointConfig
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when Sagemaker EndpointConfig resource not present
+# b) SKIP: when metada has rule suppression for SAGEMAKER_ENDPOINT_CONFIGURATION_KMS_KEY_CONFIGURED
+# c) FAIL: when all Sagemaker EndpointConfig resources KmsKeyId property does not exist
+# d) PASS: when all Sagemaker EndpointConfig resources KmsKeyId property is set
 
-## Config Rule Name : sagemaker-notebook-instance-kms-key-configured
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/sagemaker-notebook-instance-kms-key-configured.html"
+#
+# Select all AWS::SageMaker::EndpointConfig resources from incoming template (payload)
+#
+let sagemaker_endpoint_configuration_kms_key_configured = Resources.*[ Type == "AWS::SageMaker::EndpointConfig"
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W1200"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "SAGEMAKER_ENDPOINT_CONFIGURATION_KMS_KEY_CONFIGURED"
+]
 
-## Config Rule Name : sns-encrypted-kms
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/sns-encrypted-kms.html"
+rule SAGEMAKER_ENDPOINT_CONFIGURATION_KMS_KEY_CONFIGURED when %sagemaker_endpoint_configuration_kms_key_configured !empty {
+	%sagemaker_endpoint_configuration_kms_key_configured.Properties.KmsKeyId exists
+	<<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-8.3    
+		Violation: Amazon SageMaker endpoints are configured with a Key Management Service (KMS) key 
+		Fix: Set the KmsKeyId property
+	>>
+}
+
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    SAGEMAKER_NOTEBOOK_INSTANCE_KMS_KEY_CONFIGURED
+#
+# Description:
+#   Checks whether AWS Key Management Service (KMS) key is configured for an Amazon SageMaker notebook instance.
+#
+# Reports on:
+#    AWS::SageMaker::NotebookInstance
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when Sagemaker Notebook Instance resource not present
+# b) SKIP: when metada has rule suppression for SAGEMAKER_NOTEBOOK_INSTANCE_KMS_KEY_CONFIGURED
+# c) FAIL: when all Sagemaker Notebook Instance resources KmsKeyId property does not exist
+# d) PASS: when all Sagemaker Notebook Instance resources KmsKeyId property is set
+
+#
+# Select all AWS::SageMaker::NotebookInstance resources from incoming template (payload)
+#
+
+let sagemaker_notebook_instance_kms_key_configured = Resources.*[ Type == "AWS::SageMaker::NotebookInstance"
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W1201"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "SAGEMAKER_NOTEBOOK_INSTANCE_KMS_KEY_CONFIGURED"
+]
+
+rule SAGEMAKER_NOTEBOOK_INSTANCE_KMS_KEY_CONFIGURED when %sagemaker_notebook_instance_kms_key_configured !empty {
+	%sagemaker_notebook_instance_kms_key_configured.Properties.KmsKeyId exists
+	<<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-8.3    
+		Violation: Amazon SageMaker Notebook instances are configured with a Key Management Service (KMS) key 
+		Fix: Set the KmsKeyId property
+	>>
+}
+
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#    SNS_ENCRYPTED_KMS
+#
+# Description:
+#   Checks if Amazon SNS topic is encrypted with AWS Key Management Service (AWS KMS)
+#
+# Reports on:
+#    AWS::SNS::Topic
+#
+# Evaluates:
+#    AWS CloudFormation
+#
+# Rule Parameters:
+#    NA
+#
+# Scenarios:
+# a) SKIP: when there are no SNS Topics present
+# b) SKIP: when metada has rule suppression for SNS_ENCRYPTED_KMS
+# c) FAIL: when SNS topics are present, they are not encrypted with KMS
+# d) PASS: when SNS topics are present, they are encrypted with KMS
+
+#
+# Select all AWS::SNS::Topic resources from incoming template (payload)
+#
+
+let sns_encrypted_kms = Resources.*[ Type == "AWS::SNS::Topic"
+  Metadata.cfn_nag.rules_to_suppress not exists or 
+  Metadata.cfn_nag.rules_to_suppress.*.id != "W47"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "SNS_ENCRYPTED_KMS"
+]
+
+
+rule SNS_ENCRYPTED_KMS when %sns_encrypted_kms !empty {
+  %sns_encrypted_kms.Properties.KmsMasterKeyId exists
+	<<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-8.3    
+		Violation: Amazon SNS Topics are configured with a Key Management Service (KMS) key 
+		Fix: Set the KmsMasterKeyId property
+	>>
+}
 
 #
 #####################################
@@ -2086,15 +2608,200 @@ rule S3_BUCKET_VERSIONING_ENABLED when %s3_buckets_versioning_enabled !empty {
 
 ## Config Rule Name : elbv2-acm-certificate-required
 ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/elbv2-acm-certificate-required.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#   ELBV2_ACM_CERTIFICATE_REQUIRED
+#
+# Description:
+#   Checks if Application Load Balancers and Network Load Balancer HTTPS or TLS listeners are configured to use certificates from AWS Certificate Manager (ACM)
+#
+# Reports on:
+#   AWS::ElasticLoadBalancingV2::Listener
+#
+# Evaluates:
+#   AWS CloudFormation
+#
+# Rule Parameters:
+#   None
+#
+# Scenarios:
+# a) SKIP: when there are no Elastic Load Balancing V2 Listener Resources
+# b) SKIP: when metadata has rule suppression for ELB_ACM_CERTIFICATE_REQUIRED
+# c) SKIP: when there are no HTTPS or TLS Listeners
+# d) FAIL: when the Certificate in 'Certificates' is not an ACM certificate for HTTPS or TLS Listeners
+# e) PASS: when the Certificate in 'Certificates' is an ACM certificate for HTTPS or TLS Listeners
+
+#
+# Select all Elastic Load Balancing Resources from incoming template (payload)
+#
+let elbv2_acm_certificate_required_resources = Resources.*[ Type == 'AWS::ElasticLoadBalancingV2::Listener'
+  # Scenario c)
+  Properties.Protocol == 'HTTPS' or
+  Properties.Protocol == 'TLS'
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "ELBV2_ACM_CERTIFICATE_REQUIRED"
+]
+
+rule ELBV2_ACM_CERTIFICATE_REQUIRED when %elbv2_acm_certificate_required_resources !empty {
+    let doc = this 
+    %elbv2_acm_certificate_required_resources.Properties {
+        # Scenarios d) and e)
+        Certificates exists
+        Certificates is_list
+        Certificates not empty
+
+        Certificates[*] {
+            CertificateArn exists
+            CertificateArn == /arn:aws[a-z0-9\-]*:acm:[a-z0-9\-]+:\d{12}:certificate\/[\w\-]{1,64}/ or 
+            CertificateArn {
+                Ref {
+                    let resource_logical_name = this
+                    let referenced_resource = %doc.Resources[ keys == %resource_logical_name ]
+                    %referenced_resource not empty
+                    %referenced_resource {
+                        Type == "AWS::CertificateManager::Certificate"
+                        <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-9.2    
+                            Violation: ELBv2 Listeners need to use HTTPS/SSL certificates provided by AWS Certificate Manager (ACM).
+                            Fix: Set the ELBV2 Certificates.*.CertificateArn property to the ARN of an ACM Certificate.
+                        >>
+                    }
+                }
+            }
+        }
+    }
+}
 
 ## Config Rule Name : elb-acm-certificate-required
 ## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/elb-acm-certificate-required.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#   ELB_ACM_CERTIFICATE_REQUIRED
+#
+# Description:
+#   This rule checks whether the Classic Load Balancer uses HTTPS/SSL certificates provided by AWS Certificate Manager (ACM).
+#   The rule will FAIL if the Classic Load Balancer configured with HTTPS/SSL listener does not use a certificate provided by ACM.
+#
+# Reports on:
+#   AWS::ElasticLoadBalancing::LoadBalancer
+#
+# Evaluates:
+#   AWS CloudFormation
+#
+# Rule Parameters:
+#   None
+#
+# Scenarios:
+# a) SKIP: when there are no Elastic Load Balancing Resources
+# b) SKIP: when metadata has rule suppression for ELB_ACM_CERTIFICATE_REQUIRED
+# c) SKIP: when there are no HTTPS or SSL 'Listeners'
+# d) FAIL: when 'SSLCertificateId' does not matches an ACM certificate ARN for all HTTPS and SSL 'Listeners'
+# e) PASS: when 'SSLCertificateId' matches an ACM certificate ARN for all HTTPS and SSL 'Listeners'
 
-## Config Rule Name : alb-http-drop-invalid-header-enabled
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/alb-http-drop-invalid-header-enabled.html"
+#
+# Select all Elastic Load Balancing Resources from incoming template (payload)
+#
+let elb_acm_certificate_required_resources = Resources.*[ Type == 'AWS::ElasticLoadBalancing::LoadBalancer'
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "ELB_ACM_CERTIFICATE_REQUIRED"
+]
 
-## Config Rule Name : alb-http-to-https-redirection-check
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/alb-http-to-https-redirection-check.html"
+rule ELB_ACM_CERTIFICATE_REQUIRED when %elb_acm_certificate_required_resources !empty {
+    let doc = this
+    %elb_acm_certificate_required_resources.Properties {
+        Listeners[
+            # Scenario c)
+            Protocol in ['HTTPS', 'SSL']
+        ] {
+            # Scenarios d) and e)
+            SSLCertificateId exists
+            SSLCertificateId == /arn:aws[a-z0-9\-]*:acm:[a-z0-9\-]+:\d{12}:certificate\/[\w\-]{1,64}/ or 
+            SSLCertificateId {
+                Ref {
+                    let resource_logical_name = this
+                    let referenced_resource = %doc.Resources[ keys == %resource_logical_name ]
+                    %referenced_resource not empty
+                    %referenced_resource {
+                        Type == "AWS::CertificateManager::Certificate"
+                        <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-9.2,SEC-9.3    
+                            Violation: Classic Load Balancer Listeners need to use HTTPS/SSL certificates provided by AWS Certificate Manager (ACM).
+                            Fix: Set the Classic Load Balancer Listeners.*.SSLCertificateId property to the ARN of an ACM Certificate.
+                        >>    
+                    }
+                }
+            }
+        }
+    }
+}
+
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#   ALB_HTTP_DROP_INVALID_HEADER_ENABLED
+#
+# Description:
+#   Checks if rule evaluates AWS Application Load Balancers (ALB) to ensure they are configured to drop http headers.
+#
+# Reports on:
+#   AWS::ElasticLoadBalancingV2::LoadBalancer
+#
+# Evaluates:
+#   AWS CloudFormation
+#
+# Rule Parameters:
+#   None
+#
+# Scenarios:
+# a) SKIP: when there are no Elastic Load Balancing V2 Resources of type 'application'
+# b) SKIP: when metadata has rule suppression for ALB_HTTP_DROP_INVALID_HEADER_ENABLED
+# c) FAIL: when 'LoadBalancerAttributes' have not been provided
+# d) FAIL: when 'LoadBalancerAttributes' have been provided without the 'routing.http.drop_invalid_header_fields.enabled' attribute
+# e) FAIL: when 'LoadBalancerAttributes' have been provided with the 'routing.http.drop_invalid_header_fields.enabled' attribute set to 'false'
+# f) PASS: when 'LoadBalancerAttributes' have been provided with the 'routing.http.drop_invalid_header_fields.enabled' attribute set to 'true'
+
+#
+# Select all Elastic Load Balancing V2 Resources from incoming template of type 'application' (payload)
+#
+let alb_http_drop_invalid_header_enabled_resources = Resources.*[ Type == 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+  Properties.Type == "application"
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "ALB_HTTP_DROP_INVALID_HEADER_ENABLED"
+]
+
+rule ALB_HTTP_DROP_INVALID_HEADER_ENABLED when %alb_http_drop_invalid_header_enabled_resources !empty {
+    %alb_http_drop_invalid_header_enabled_resources.Properties {
+        LoadBalancerAttributes exists
+        LoadBalancerAttributes is_list
+        LoadBalancerAttributes not empty
+        
+        some LoadBalancerAttributes[*] {
+            Key == "routing.http.drop_invalid_header_fields.enabled"
+            Value == true OR
+            Value == "true"
+            <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-9.3    
+                Violation: AWS Application Load Balancers (ALB) must be configured to drop invalid HTTP headers.
+                Fix: Set the 'LoadBalancerAttribute' 'routing.http.drop_invalid_header_fields.enabled' to 'true'
+            >>
+        }	
+    }
+}
+
 
 # Rule Intent: Checks if HTTP to HTTPS redirection is configured on all HTTP listeners of Application Load Balancers.
 
@@ -2110,57 +2817,98 @@ rule S3_BUCKET_VERSIONING_ENABLED when %s3_buckets_versioning_enabled !empty {
 # Select all ALB resources from incoming template (payload)
 #
 
-## Config Rule Name : api-gw-ssl-enabled
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/api-gw-ssl-enabled.html"
-
 #
 #####################################
 ##           Gherkin               ##
 #####################################
 # Rule Identifier:
-#    ELASTICSEARCH_NODE_TO_NODE_ENCRYPTION_CHECK
+#   ELASTICSEARCH_NODE_TO_NODE_ENCRYPTION_CHECK
 #
 # Description:
 #   Elasticsearch domains must enforce Node-to-Node Encryption
 #
 # Reports on:
-#    AWS::Elasticsearch::Domain
+#   AWS::Elasticsearch::Domain
 #
 # Evaluates:
-#    AWS CloudFormation
+#   AWS CloudFormation
 #
 # Rule Parameters:
-#    NA
+#   NA
 #
 # Scenarios:
 # a) SKIP: when there is no elasticsearch domain present
-# b) FAIL: when elasticsearch domain has Node-to-Node encryption set to false
-# c) PASS: when elasticsearch domain has Node-to-Node encryption set to true
-# d) FAIL: when elasticsearch domain has Node-to-Node encryption property missing
-# e) SKIP: when metada has rule suppression for ELASTICSEARCH_NODE_TO_NODE_ENCRYPTION_CHECK
+# b) SKIP: when metada has rule suppression for ELASTICSEARCH_NODE_TO_NODE_ENCRYPTION_CHECK
+# c) FAIL: when Elasticsearch domain has Node-to-Node encryption property missing
+# d) FAIL: when Elasticsearch domain has Node-to-Node encryption set to false
+# e) PASS: when Elasticsearch domain has Node-to-Node encryption set to true
 
 #
 # Select all elasticsearch domains from incoming template
 #
-
-let elasticsearch_domains_node2node_encrpytion = Resources.*[ Type == 'AWS::Elasticsearch::Domain'
+let elasticsearch_node_to_node_encryption_check = Resources.*[ Type == "AWS::Elasticsearch::Domain"
   Metadata.guard.SuppressedRules not exists or
   Metadata.guard.SuppressedRules.* != "ELASTICSEARCH_NODE_TO_NODE_ENCRYPTION_CHECK"
 ]
 
-rule ELASTICSEARCH_NODE_TO_NODE_ENCRYPTION_CHECK when %elasticsearch_domains_node2node_encrpytion !empty {
-  %elasticsearch_domains_node2node_encrpytion.Properties.NodeToNodeEncryptionOptions.Enabled == true
-  <<
+rule ELASTICSEARCH_NODE_TO_NODE_ENCRYPTION_CHECK when %elasticsearch_node_to_node_encryption_check !empty {
+    %elasticsearch_node_to_node_encryption_check.Properties.NodeToNodeEncryptionOptions.Enabled == true
+        <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-9.3    
-    Violation: Elasticsearch domains must enforce Node-to-Node Encryption.
-    Fix: Set the NodeToNodeEncryptionOptions.Enabled parameter to true.
-  >>
+            Violation: Elasticsearch domains must enforce Node-to-Node Encryption.
+            Fix: Set the NodeToNodeEncryptionOptions.Enabled parameter to true.
+        >>
 }
 
-## Config Rule Name : elb-tls-https-listeners-only
-## Config Rule URL: https://docs.aws.amazon.com/config/latest/developerguide/elb-tls-https-listeners-only.html"
+#
+#####################################
+##           Gherkin               ##
+#####################################
+#
+# Rule Identifier:
+#   ELB_TLS_HTTPS_LISTENERS_ONLY
+#
+# Description:
+#   This rule checks whether Classic Load Balancer listeners are configured with HTTPS or SSL protocol for front-end (client to load balancer).
+#
+# Reports on:
+#   AWS::ElasticLoadBalancing::LoadBalancer
+#
+# Evaluates:
+#   AWS CloudFormation
+#
+# Rule Parameters:
+#   None
+#
+# Scenarios:
+# a) SKIP: when there are no Elastic Load Balancing Resources
+# b) SKIP: when metadata has rule suppression for ELB_TLS_HTTPS_LISTENERS_ONLY
+# c) FAIL: when 'Protocol' on 'Listeners' is not set to 'HTTPS' or 'SSL'
+# d) PASS: when 'Protocol' on all 'Listeners' is set to 'HTTPS' or 'SSL'
 
+#
+# Select all Elastic Load Balancing Resources from incoming template (payload)
+#
+let elb_tls_https_listeners_only_resources = Resources.*[ Type == 'AWS::ElasticLoadBalancing::LoadBalancer'
+  Metadata.guard.SuppressedRules not exists or
+  Metadata.guard.SuppressedRules.* != "ELB_TLS_HTTPS_LISTENERS_ONLY"
+]
+
+rule ELB_TLS_HTTPS_LISTENERS_ONLY when %elb_tls_https_listeners_only_resources !empty {
+    %elb_tls_https_listeners_only_resources.Properties {
+        Listeners.* {
+           # Scenarios c) and d)
+           Protocol in ['HTTPS', 'SSL']
+            <<
+    Guard Rule Set: wa-Security-Pillar
+    Controls: SEC-9.3,SEC-9.4    
+                Violation: Classic Load Balancer listeners must be configured with HTTPS or SSL protocol for front-end (client to load balancer).
+                Fix: Set a Classic Load Balancer Listeners.*.Protocol to 'HTTPS' or 'SSL'.
+            >>
+        }
+    }
+}
 #
 #####################################
 ##           Gherkin               ##
@@ -2194,8 +2942,20 @@ let s3_buckets_policies_ssl_requests_only = Resources.*[ Type == 'AWS::S3::Bucke
   Metadata.guard.SuppressedRules.* != "S3_BUCKET_SSL_REQUESTS_ONLY"
 ]
 
+# Select secure S3 Bucket Policy resources from incoming template
+let ssl_secure_bucket_policies = %s3_buckets_policies_ssl_requests_only[
+  Properties.PolicyDocument {
+    some Statement[*] {
+      Effect == 'Deny'
+      Condition {
+        Bool.'aws:SecureTransport' == false
+      }
+    }
+  }
+]
+
 rule S3_BUCKET_SSL_REQUESTS_ONLY when %s3_buckets_policies_ssl_requests_only !empty {
-  some %s3_buckets_policies_ssl_requests_only.Properties.PolicyDocument.Statement.* == {"Action":"s3:*","Effect":"Deny","Principal":"*","Resource":"*","Condition":{"Bool":{"aws:SecureTransport":false}}}
+  %ssl_secure_bucket_policies !empty
   <<
     Guard Rule Set: wa-Security-Pillar
     Controls: SEC-9.3,SEC-9.4    
