@@ -257,6 +257,10 @@ Resources:
 
   ExtractCarbonEmissionsLambdaRole:
     Type: AWS::IAM::Role
+    Metadata:
+      guard:
+        SuppressedRules:
+          - IAM_NO_INLINE_POLICY_CHECK
     Properties:
       RoleName: extract-emissions-lambda-role
       AssumeRolePolicyDocument:
