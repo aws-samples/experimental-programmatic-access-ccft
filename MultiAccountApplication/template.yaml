@@ -252,32 +252,52 @@ Resources:
       RetentionInDays: 1
 
   # -------------------------------------------------------------------------------------------------------------------
-  # Create a Lambda function + log group to extract AWS Customer Carbon Footprint Tool data.
+  # Create a Lambda function, role + log group to extract AWS Customer Carbon Footprint Tool data.
   # -------------------------------------------------------------------------------------------------------------------
 
+  ExtractCarbonEmissionsLambdaRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      guard:
+        SuppressedRules:
+          - IAM_NO_INLINE_POLICY_CHECK
+    Properties:
+      RoleName: extract-emissions-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CarbonDataExtractionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: GetCarbonFootprintSummary
+                Effect: Allow
+                Action:
+                  - sustainability:GetCarbonFootprintSummary
+                Resource: '*'
+              - Sid: S3WritePolicy
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub "${CarbonEmissionsDataBucket.Arn}/*"
+              - Sid: STSAssumeRole
+                Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource: !Sub "arn:${AWS::Partition}:iam::*:role/${CCFTRoleName}"
+  
   ExtractCarbonEmissionsFunction:
     Type: AWS::Serverless::Function 
     Properties:
       FunctionName: "extract-carbon-emissions-data"
       CodeUri: lambda_functions/extract_carbon_emissions/
       Handler: app.lambda_handler
-      Policies:
-        - Statement:
-          - Sid: GetCarbonFootprintSummary
-            Effect: Allow
-            Action:
-            - sustainability:GetCarbonFootprintSummary
-            Resource: '*'
-          - Sid: S3WritePolicy
-            Effect: Allow
-            Action:
-            - s3:PutObject
-            Resource: !Sub "${CarbonEmissionsDataBucket.Arn}/*"
-          - Sid: STSAssumeRole
-            Effect: Allow
-            Action:
-            - sts:AssumeRole
-            Resource: !Sub "arn:${AWS::Partition}:iam::*:role/${CCFTRoleName}"
+      Role: !GetAtt ExtractCarbonEmissionsLambdaRole.Arn
       Runtime: python3.11
       Architectures:
         - arm64

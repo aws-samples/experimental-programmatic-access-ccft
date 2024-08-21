@@ -29,7 +29,7 @@ Resources:
           - Effect: Allow
             Principal:
               AWS:
-                - !Sub 'arn:aws:iam::${ManagementAccount}:root'
+                - !Sub 'arn:aws:iam::${ManagementAccount}:role/extract-emissions-lambda-role'
             Action:
               - 'sts:AssumeRole'
       Policies:
