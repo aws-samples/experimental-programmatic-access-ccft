@@ -7,7 +7,7 @@ Metadata:
     Author: experimental-programmatic-access-ccft-team
     LicenseUrl: ../LICENSE
     ReadmeUrl: ../README.md
-    SemanticVersion: 1.1.5
+    SemanticVersion: 1.1.7
     HomePageUrl: https://github.com/aws-samples/experimental-programmatic-access-ccft
     SourceCodeUrl: https://github.com/aws-samples/experimental-programmatic-access-ccft
 Description: >
@@ -47,8 +47,40 @@ Resources:
 
   CarbonEmissionsDataBucket:
     Type: AWS::S3::Bucket
+    Metadata:
+      guard:
+        SuppressedRules:
+        # We neither log nor version the bucket for the code sample to reduce storage.
+        # Do versioning and lifecycling of deleted versions as needed.
+        - S3_BUCKET_LOGGING_ENABLED
+        - S3_BUCKET_VERSIONING_ENABLED
     Properties:
       BucketName: !Sub "${AWS::AccountId}-${AWS::Region}-${CarbonEmissionsDataBucketName}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  CarbonEmissionsDataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CarbonEmissionsDataBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${CarbonEmissionsDataBucket}"
+              - !Sub "arn:aws:s3:::${CarbonEmissionsDataBucket}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
 
   # -------------------------------------------------------------------------------------------------------------------
   # Create an S3 bucket to be used as Athena output location, with a retention time of files of 1 day.
@@ -56,6 +88,13 @@ Resources:
 
   AthenaResultBucket:
     Type: AWS::S3::Bucket
+    Metadata:
+      guard:
+        SuppressedRules:
+        # We neither log nor version the bucket for the code sample to reduce storage.
+        # Do versioning and lifecycling of deleted versions as needed.
+        - S3_BUCKET_LOGGING_ENABLED
+        - S3_BUCKET_VERSIONING_ENABLED
     Properties:
       BucketName: !Sub "${AWS::AccountId}-${AWS::Region}-athenaresults"
       LifecycleConfiguration:
@@ -63,6 +102,32 @@ Resources:
           - Id: DeleteAfterOneDay
             Status: Enabled
             ExpirationInDays: 1
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  AthenaResultBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AthenaResultBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${AthenaResultBucket}"
+              - !Sub "arn:aws:s3:::${AthenaResultBucket}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
 
   # -------------------------------------------------------------------------------------------------------------------
   # Create an AWS Step Function State Machine and a EventBridge rule to trigger the Step Functions workflow.
@@ -132,6 +197,12 @@ Resources:
 
   GetAccountIDsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+        # Log group data is always encrypted in CloudWatch Logs.
+        # By default, CloudWatch Logs uses server-side encryption for the log data at rest.
+        - CLOUDWATCH_LOG_GROUP_ENCRYPTED
     Properties:
       LogGroupName: !Sub "/aws/lambda/${GetAccountIDsFunction}"
       RetentionInDays: 1
@@ -170,37 +241,63 @@ Resources:
 
   CheckFirstInvocationFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+        # Log group data is always encrypted in CloudWatch Logs.
+        # By default, CloudWatch Logs uses server-side encryption for the log data at rest.
+        - CLOUDWATCH_LOG_GROUP_ENCRYPTED
     Properties:
       LogGroupName: !Sub "/aws/lambda/${CheckFirstInvocationFunction}"
       RetentionInDays: 1
 
   # -------------------------------------------------------------------------------------------------------------------
-  # Create a Lambda function + log group to extract AWS Customer Carbon Footprint Tool data.
+  # Create a Lambda function, role + log group to extract AWS Customer Carbon Footprint Tool data.
   # -------------------------------------------------------------------------------------------------------------------
 
+  ExtractCarbonEmissionsLambdaRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      guard:
+        SuppressedRules:
+          - IAM_NO_INLINE_POLICY_CHECK
+    Properties:
+      RoleName: extract-emissions-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CarbonDataExtractionPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: GetCarbonFootprintSummary
+                Effect: Allow
+                Action:
+                  - sustainability:GetCarbonFootprintSummary
+                Resource: '*'
+              - Sid: S3WritePolicy
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub "${CarbonEmissionsDataBucket.Arn}/*"
+              - Sid: STSAssumeRole
+                Effect: Allow
+                Action:
+                  - sts:AssumeRole
+                Resource: !Sub "arn:${AWS::Partition}:iam::*:role/${CCFTRoleName}"
+  
   ExtractCarbonEmissionsFunction:
     Type: AWS::Serverless::Function 
     Properties:
       FunctionName: "extract-carbon-emissions-data"
       CodeUri: lambda_functions/extract_carbon_emissions/
       Handler: app.lambda_handler
-      Policies:
-        - Statement:
-          - Sid: GetCarbonFootprintSummary
-            Effect: Allow
-            Action:
-            - sustainability:GetCarbonFootprintSummary
-            Resource: '*'
-          - Sid: S3WritePolicy
-            Effect: Allow
-            Action:
-            - s3:PutObject
-            Resource: !Sub "${CarbonEmissionsDataBucket.Arn}/*"
-          - Sid: STSAssumeRole
-            Effect: Allow
-            Action:
-            - sts:AssumeRole
-            Resource: '*'
+      Role: !GetAtt ExtractCarbonEmissionsLambdaRole.Arn
       Runtime: python3.11
       Architectures:
         - arm64
@@ -213,6 +310,12 @@ Resources:
 
   ExtractCarbonEmissionsFunctionLogGroup:
     Type: AWS::Logs::LogGroup
+    Metadata:
+      guard:
+        SuppressedRules:
+        # Log group data is always encrypted in CloudWatch Logs.
+        # By default, CloudWatch Logs uses server-side encryption for the log data at rest.
+        - CLOUDWATCH_LOG_GROUP_ENCRYPTED
     Properties:
       LogGroupName: !Sub "/aws/lambda/${ExtractCarbonEmissionsFunction}"
       RetentionInDays: 1
@@ -255,9 +358,9 @@ Resources:
             - glue:GetTable
             Resource:
             - !Sub "arn:${AWS::Partition}:athena:${AWS::Region}:${AWS::AccountId}:workgroup/${AthenaWorkgroup}"
-            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog"
-            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${GlueDatabaseName}"
-            - !Sub "arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${GlueDatabaseName}/*"
+            - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:catalog"
+            - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:database/${GlueDatabaseName}"
+            - !Sub "arn:${AWS::Partition}:glue:${AWS::Region}:${AWS::AccountId}:table/${GlueDatabaseName}/*"
           - Sid: S3Allow
             Effect: Allow
             Action:
