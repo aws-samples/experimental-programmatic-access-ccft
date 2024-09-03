@@ -250,15 +250,15 @@ You can find details on the resources that are created within the [`template.yam
 - **CheckFirstInvocation**: The statemachine checks if it is invoked for the first time by checking if the created S3 bucket `{AccountId}-{Region}-ccft-data` is empty. If yes, it continues to (3). If there are already objects in the bucket (which means it is not the first invocation), it directly jumps to **ExtractCarbonEmissions-Canary**.
 
 - **ProcessAccounts-Backfill**: The first invocation triggers a backfill of data for the past 40-4months.
-  For every account that belongs to the organization you are running this in a Lambda function with the ccft script is triggered, which extracts the AWS Customer Carbon Footprint Tool data for the past 40 months to the past 4 months and stores it as one .json file per account in the ccft-data bucket, since the maximum duration that we can extract carbon emissions data from is 36 months. (Example: If the first invocation happens in August 2023, the script will extract data from April 2020 to April 2023). It then also creates an Athena database and table, as well as a view which unnests the .json data.
+  For every account that belongs to the organization you are running this in a Lambda function with the ccft script is triggered, which extracts the AWS Customer Carbon Footprint Tool data for the past 40 months to the past 4 months and stores it as one .json file per account in the ccft-data bucket, since the maximum duration that we can extract carbon emissions data from is 36 months. (Example: If the first invocation happens in August 2023, the script will extract data from April 2020 to April 2023). This State Machine Map state is set to 50 concurrent executions.
 
 - **ExtractCarbonEmissions-Canary**/ **Choice: New Data Available**: As the publishing date for new monthly CCFT data can vary, the state machine first checks if there is data for a canary account (by default the payer) available (for three months ago). If not, it goes to a waiting state (**RetryLambdaDaily**). If there is data available, it goes forward to **ProcessAccounts**.
 
 - **RetryLambdaDaily**: If new monthly data is not yet available, the statemachine waits for one day and then tries (4) again.
 
-- **ProcessAccounts**: If new monthly data is available, we can continue to extract the data for all accounts of an AWS organization. The state machine extracts triggers a Lambda function with the ccft-script to extract CCFT data for all account ID's, and stores the data within one .json file.
+- **ProcessAccounts**: If new monthly data is available, we can continue to extract the data for all accounts of an AWS organization. The state machine extracts triggers a Lambda function with the ccft-script to extract CCFT data for all account ID's, and stores the data within one .json file. This State Machine Map state is set to 50 concurrent executions.
 
-- **CreateAthenaTableView**: If they don't exist, the Athena database, table, and view are created that point to the ccft-data bucket (in the case that this didn't happen yet in the backfill step). For every invocation, two views get updated with the new data.
+- **CreateAthenaTableView**: If they don't exist, the Athena database, table, and views are created that point to the ccft-data bucket.
 
 ### Q: How can I deploy the application?
 
@@ -408,7 +408,6 @@ If you want to visualize the data, you can do so by using Amazon QuickSight. Che
 ### Troubleshooting
 - By default, the retention period for the Lambda function log groups are set to 1 day. You can change the `RetentionInDays` parameter in the [SAM template](./MultiAccountApplication/template.yaml).
 - For further trouble shooting, enable [logging on the state machine](https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html).
-- If you are running the application with a high number of accounts, you might run into Lambda concurrency issues. For this, check CloudWatch logs for `Lambda.TooManyRequestsException`. To fix, check the [concurrency limit](https://docs.aws.amazon.com/lambda/latest/dg/lambda-concurrency.html) of your account and Lambda function (this is by default 1.000 concurrent executions across all functions in a region), and set the Map state [`MaxConcurrency` parameter](https://docs.aws.amazon.com/step-functions/latest/dg/state-map-distributed.html) accordingly. If you do not specify `MaxConcurrency`, Step Functions doesn't limit concurreny and runs 10,000 parallel child workflow executions.
 - If you run into `PermissionDenied` errors, check that the correct permissions are set up. Additionally, check for [Service Control Policies (SCPs)](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html) that further limit access centrally and trouble-shoot using [IAM policy simulator](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_testing-policies.html).
 
 ###  What are costs for running this application?
