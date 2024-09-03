@@ -293,7 +293,7 @@ To build and deploy your application for the first time, run the following comma
 
 ```bash
 sam build
-sam deploy --guided --profile <specify your profile name as in your credentials file our use default>
+sam deploy --guided --profile <specify your profile name as in your credentials file or use default>
 ```
 
 The first command will build the source of your application. If you get an error message related to Python 3.11 runtime dependencies, you can also use `sam build --use-container` to build your serverless application's code in a Docker container. 
@@ -339,7 +339,7 @@ In order to successfully extract carbon emissions data from the central account 
 }
 ```
 
-(2) Additionally, you need to set-up a trust relationship so that the central account (where you've deployed the SAM application) can assume this role. Update {Account} with the account ID of the central account where you've deployed this application.
+(2) Additionally, you need to set-up a trust relationship so that the Lambda function `extract-carbon-emissions-data` in the central account (where you've deployed the SAM application) can assume this role. Update {Account} with the account ID of the account where you've deployed this application.
 
 ```json
 {
@@ -348,7 +348,7 @@ In order to successfully extract carbon emissions data from the central account 
         {
             "Effect": "Allow",
             "Principal": {
-                "AWS": "arn:aws:iam::{Account}:root"
+                "AWS": "arn:aws:iam::{Account}:role/extract-emissions-lambda-role"
             },
             "Action": "sts:AssumeRole",
             "Condition": {}
@@ -404,6 +404,12 @@ If you want to visualize the data, you can do so by using Amazon QuickSight. Che
 - If data isn't available for your account, your account might be too new to show data. After each month, you might have a delay of up to three months for AWS to show your carbon emission estimates.
 - If your AWS Customer Carbon Footprint Tool emissions are zero, the script will also return `0.0`. Please note, that you will not see the product split or region split in this case (`paceProductCode` and `regionCode` under `carbonEmissionEntries` will not be returned). In your Athena view, `paceproductcode` and `regioncode` will be empty if the emissions of an account for a specific month are `0`.
 - `servermedianinefficiency` and `gridmixinefficiency` data are provided per month per accountID, not in the granularity of `paceproductcode` and `regioncode`
+
+### Troubleshooting
+- By default, the retention period for the Lambda function log groups are set to 1 day. You can change the `RetentionInDays` parameter in the [SAM template](./MultiAccountApplication/template.yaml).
+- For further trouble shooting, enable [logging on the state machine](https://docs.aws.amazon.com/step-functions/latest/dg/cw-logs.html).
+- If you are running the application with a high number of accounts, you might run into Lambda concurrency issues. For this, check CloudWatch logs for `Lambda.TooManyRequestsException`. To fix, check the [concurrency limit](https://docs.aws.amazon.com/lambda/latest/dg/lambda-concurrency.html) of your account and Lambda function (this is by default 1.000 concurrent executions across all functions in a region), and set the Map state [`MaxConcurrency` parameter](https://docs.aws.amazon.com/step-functions/latest/dg/state-map-distributed.html) accordingly. If you do not specify `MaxConcurrency`, Step Functions doesn't limit concurreny and runs 10,000 parallel child workflow executions.
+- If you run into `PermissionDenied` errors, check that the correct permissions are set up. Additionally, check for [Service Control Policies (SCPs)](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html) that further limit access centrally and trouble-shoot using [IAM policy simulator](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_testing-policies.html).
 
 ###  What are costs for running this application?
 The cost for running this application depends on the number of accounts that are part of your organization. You can use this [AWS Pricing Calculator example](https://calculator.aws/#/estimate?id=1963803b68ed07e959eb8cbd2b7b3a7059bbfbfb) and adapt it to your requirements. There are no upfront cost to running this application; you pay for the resources that are created and used as part of the application. Major services used are the following:
