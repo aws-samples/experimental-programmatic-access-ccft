@@ -64,8 +64,13 @@ def lambda_handler(event, _):
         # Retrieve the ID of the management account
         management_account_id = org_client.describe_organization()['Organization']['MasterAccountId']
 
-        # Retrieve all account IDs in the organization
-        accounts = [account["Id"] for page in paginator.paginate() for account in page["Accounts"]]
+        # Retrieve all active account IDs in the organization (filtering out accounts in status SUSPENDED or PENDING_CLOSURE)
+        accounts = [
+            account["Id"]
+            for page in paginator.paginate()
+            for account in page["Accounts"]
+            if account["Status"] == "ACTIVE"  # Filter for active accounts
+        ]
 
         # move the management account to the first index
         accounts.remove(management_account_id)
