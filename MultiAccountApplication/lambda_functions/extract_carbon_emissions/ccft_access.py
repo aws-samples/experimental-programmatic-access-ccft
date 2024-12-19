@@ -110,16 +110,14 @@ if __name__ == "__main__":
         "-s",
         type=lambda s: datetime.strptime(s, "%Y-%m-%d"),
         default=datetime.strptime(default_start_date, "%Y-%m-%d"),
-        help="first month of the closed interval, default 36 months before end date: %s"
-        % default_start_date,
+        help=f"first month of the closed interval, default 36 months before end date: {default_start_date}",
     )
     parser.add_argument(
         "--end-date",
         "-e",
         type=lambda s: datetime.strptime(s, "%Y-%m-%d"),
         default=datetime.strptime(default_end_date, "%Y-%m-%d"),
-        help="last month of the closed interval, default 3 months before current date: %s"
-        % default_end_date,
+        help=f"last month of the closed interval, default 3 months before current date: {default_end_date}",
     )
 
     args = parser.parse_args()
