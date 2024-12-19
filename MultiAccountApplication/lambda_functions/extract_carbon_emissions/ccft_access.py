@@ -32,7 +32,7 @@ from dateutil.relativedelta import relativedelta
 def extract_emissions_data(startDate, endDate, credentials):
     billing_region = "us-east-1"
     host = f"{billing_region}.prod.sustainability.billingconsole.aws.dev"
-    url = f"https://{host}/get-carbon-footprint-summary?startDate={start_date}&endDate={end_date}"
+    url = f"https://{host}/get-carbon-footprint-summary?startDate={startDate}&endDate={endDate}"
     method = "GET"
 
     if credentials.token is None:
