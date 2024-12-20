@@ -87,7 +87,7 @@ Read the AWS Customer Carbon Footprint Tool documentation for more details to [u
 ### Q: How do I use the script?
 
 1. Clone the repository and navigate to the folder [`MultiAccountApplication/lambda_functions/extract_carbon_emissions/`](./MultiAccountApplication/lambda_functions/extract_carbon_emissions/).
-2. [Assume](https://aws.amazon.com/premiumsupport/knowledge-center/iam-assume-role-cli/) a [role with access](#q-what-aws-iam-role-do-i-need) to the AWS Customer Carbon Footprint Tool.
+2. [Assume](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-role.html) a [role with access](#q-what-aws-iam-role-do-i-need) to the AWS Customer Carbon Footprint Tool.
 3. Execute the script:
 
 ```bash
