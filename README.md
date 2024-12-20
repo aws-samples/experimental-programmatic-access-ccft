@@ -52,7 +52,7 @@ On a high-level, the output from calling the experimental programmatic access sc
         […]
       }
     ],
-    "carbonEmissionsForecast": <-- (5), Path to 100% renewable energy
+    "carbonEmissionsForecast": [
       {
         […]
         "mbmCarbon": <-- Your estimated, forecasted carbon emissions in metric tons of CO2eq, following the market-based method (mbm) of the Greenhouse Gas Protocol
@@ -62,11 +62,10 @@ On a high-level, the output from calling the experimental programmatic access sc
         […]
       }
     ],
-    "carbonEmissionsInefficiency": <-- (4)
+    "carbonEmissionsInefficiency": [
       {
-        "gridMixInefficiency": <-- (4.1), Your emission savings from AWS renewable energy purchases
+        "gridMixInefficiency": <-- (4), Estimated emissions savings: difference between the carbon footprint emissions calculated using the location-based method (LBM) and the market-based method (MBM).
         […]
-        "serverMedianInefficiency": <-- (4.2), Your emission savings from using AWS computing services
         "startDate": <-- month this data relates to
       },
       {
