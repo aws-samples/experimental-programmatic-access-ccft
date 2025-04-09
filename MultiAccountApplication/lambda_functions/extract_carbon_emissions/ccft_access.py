@@ -55,7 +55,7 @@ def extract_emissions_data(startDate, endDate, credentials):
 
     try:
         response = requests.request(
-            method, url, headers=dict(request.headers), data={}, timeout=5
+            method, url, headers=dict(request.headers), data={}, timeout=20
         )
         response.raise_for_status()
     except Exception as e:
