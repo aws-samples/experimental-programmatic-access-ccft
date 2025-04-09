@@ -179,6 +179,7 @@ Resources:
       CodeUri: lambda_functions/get_account_ids/
       Handler: app.lambda_handler
       Policies:
+        - AWSLambdaBasicExecutionRole
         - Statement:
           - Sid: ListAccounts
             Effect: Allow
@@ -218,6 +219,7 @@ Resources:
       CodeUri: lambda_functions/check_first_invocation/
       Handler: app.lambda_handler
       Policies:
+        - AWSLambdaBasicExecutionRole
         - S3ReadPolicy:
             BucketName: !Ref CarbonEmissionsDataBucket
         - Statement:
@@ -297,6 +299,8 @@ Resources:
       FunctionName: "extract-carbon-emissions-data"
       CodeUri: lambda_functions/extract_carbon_emissions/
       Handler: app.lambda_handler
+      Policies:
+        - AWSLambdaBasicExecutionRole
       Role: !GetAtt ExtractCarbonEmissionsLambdaRole.Arn
       Runtime: python3.11
       Architectures:
@@ -343,6 +347,7 @@ Resources:
       CodeUri: lambda_functions/create_alter_athena_view/
       Handler: app.lambda_handler
       Policies:
+        - AWSLambdaBasicExecutionRole
         - Statement:
           - Sid: Athena
             Effect: Allow
