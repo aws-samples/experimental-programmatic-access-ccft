@@ -1,3 +1,7 @@
+# ⚠️ Deprecation Warning
+
+On April 24th 2025 [AWS launched Carbon emissions Data Exports](https://aws.amazon.com/about-aws/whats-new/2025/04/customer-carbon-footprint-tool-updated-methodology/), a managed export feature for carbon emissions estimates. The endpoint used by this sample code will be discontinued on July 23rd 2025 and this sample code will stop working. We recommend using Carbon emissions Data Exports instead. Read [Access and visualize carbon emissions data from AWS Data Exports](https://aws.amazon.com/blogs/aws-cloud-financial-management/export-and-visualize-carbon-emissions-data-from-your-aws-accounts/) for details and instructions on how to source the data from Data Exports and visualize it.
+
 # Experimental programmatic access to the AWS Customer Carbon Footprint Tool data
 
 You can use the [AWS Customer Carbon Footprint Tool](https://aws.amazon.com/aws-cost-management/aws-customer-carbon-footprint-tool/) (CCFT) to view estimates of the carbon emissions associated with your AWS products and services. You can access the same AWS Customer Carbon Footprint Tool information by resembling the behavior of the console with this **experimental** script.
