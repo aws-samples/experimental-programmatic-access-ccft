@@ -1,5 +1,7 @@
 # ⚠️ Deprecation Warning
 
+This repository is no longer maintained as of July 2025. Please use the [Carbon emissions Data Export](https://aws.amazon.com/blogs/aws-cloud-financial-management/export-and-visualize-carbon-emissions-data-from-your-aws-accounts/) to automatically export carbon emissions data to Amazon S3.
+
 On April 24th 2025 [AWS launched Carbon emissions Data Exports](https://aws.amazon.com/about-aws/whats-new/2025/04/customer-carbon-footprint-tool-updated-methodology/), a managed export feature for carbon emissions estimates. The endpoint used by this sample code will be discontinued on July 23rd 2025 and this sample code will stop working. We recommend using Carbon emissions Data Exports instead. Read [Access and visualize carbon emissions data from AWS Data Exports](https://aws.amazon.com/blogs/aws-cloud-financial-management/export-and-visualize-carbon-emissions-data-from-your-aws-accounts/) for details and instructions on how to source the data from Data Exports and visualize it.
 
 # Experimental programmatic access to the AWS Customer Carbon Footprint Tool data
